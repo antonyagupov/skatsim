@@ -1,0 +1,25 @@
+{
+  "name": "skatsim",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "generate:placeholders": "node scripts/procedural-placeholders.mjs",
+    "generate:assets": "node scripts/generate-assets.mjs",
+    "generate:battle-bg": "node scripts/generate-assets.mjs --only=battle-screen-ref",
+    "postprocess:assets": "node scripts/postprocess-assets.mjs"
+  },
+  "dependencies": {
+    "phaser": "3.87.0"
+  },
+  "devDependencies": {
+    "typescript": "~5.8.3",
+    "vite": "^6.3.5",
+    "vitest": "3.2.4"
+  }
+}

@@ -1,0 +1,24 @@
+# Secrets
+.env
+.env.local
+.env.*.local
+
+# Dependencies & build
+node_modules/
+dist/
+
+# Netlify
+.netlify/
+
+# Local AI generation metadata & raw outputs
+.generated-assets/
+
+# OS / editor
+.DS_Store
+*.log
+.vscode/
+.idea/
+.netlify
+
+# Local agent cache (keep committed skills under .agents/skills if present)
+.cursor/
