@@ -13,7 +13,8 @@ npm run dev
 
 Open the local URL → **Play** (unlocks audio) → World Map.
 
-**Live:** https://antonyagupov.github.io/skatsim/
+**Live:** https://antonyagupov.github.io/skatsim/  
+Repo: https://github.com/antonyagupov/skatsim (site is served from the `gh-pages` branch)
 
 ### Controls
 - **Swap:** drag adjacent gems or tap–tap (must create a match of 3+)
