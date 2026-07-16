@@ -1,0 +1,106 @@
+{
+  "battle-screen-ref": {
+    "source": "generated",
+    "path": "/assets/refs/battle-screen-ref.png"
+  },
+  "hero-warrior": {
+    "source": "generated",
+    "path": "/assets/heroes/hero-warrior.png"
+  },
+  "hero-mage": {
+    "source": "generated",
+    "path": "/assets/heroes/hero-mage.png"
+  },
+  "hero-ranger": {
+    "source": "generated",
+    "path": "/assets/heroes/hero-ranger.png"
+  },
+  "hero-priest": {
+    "source": "generated",
+    "path": "/assets/heroes/hero-priest.png"
+  },
+  "enemy-slime": {
+    "source": "generated",
+    "path": "/assets/enemies/enemy-slime.png"
+  },
+  "enemy-bat": {
+    "source": "generated",
+    "path": "/assets/enemies/enemy-bat.png"
+  },
+  "boss-goblin": {
+    "source": "generated",
+    "path": "/assets/enemies/boss-goblin.png"
+  },
+  "gems-set": {
+    "source": "generated",
+    "path": "/assets/gems/gems-set.png"
+  },
+  "env-worldmap": {
+    "source": "generated",
+    "path": "/assets/env/env-worldmap.png"
+  },
+  "env-village": {
+    "source": "generated",
+    "path": "/assets/env/env-village.png"
+  },
+  "battle-boss-bg": {
+    "source": "generated",
+    "path": "/assets/env/battle-boss-bg.png"
+  },
+  "gem-flame": {
+    "source": "generated",
+    "path": "/assets/gems/gem-flame.png"
+  },
+  "gem-ice": {
+    "source": "generated",
+    "path": "/assets/gems/gem-ice.png"
+  },
+  "gem-leaf": {
+    "source": "generated",
+    "path": "/assets/gems/gem-leaf.png"
+  },
+  "gem-light": {
+    "source": "generated",
+    "path": "/assets/gems/gem-light.png"
+  },
+  "hero-warrior-portrait": {
+    "source": "procedural",
+    "path": "/assets/portraits/hero-warrior-portrait.png"
+  },
+  "hero-mage-portrait": {
+    "source": "procedural",
+    "path": "/assets/portraits/hero-mage-portrait.png"
+  },
+  "hero-ranger-portrait": {
+    "source": "procedural",
+    "path": "/assets/portraits/hero-ranger-portrait.png"
+  },
+  "hero-priest-portrait": {
+    "source": "procedural",
+    "path": "/assets/portraits/hero-priest-portrait.png"
+  },
+  "icon-gold": {
+    "source": "generated",
+    "path": "/assets/ui/icon-gold.png"
+  },
+  "icon-materials": {
+    "source": "generated",
+    "path": "/assets/ui/icon-materials.png"
+  },
+  "facility-mine": {
+    "source": "generated",
+    "path": "/assets/ui/facility-mine.png"
+  },
+  "facility-training": {
+    "source": "generated",
+    "path": "/assets/ui/facility-training.png"
+  },
+  "facility-workshop": {
+    "source": "generated",
+    "path": "/assets/ui/facility-workshop.png"
+  },
+  "icon-warriors": {
+    "source": "generated",
+    "path": "/assets/ui/icon-warriors.png"
+  }
+}
