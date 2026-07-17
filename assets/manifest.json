@@ -114,5 +114,13 @@
   "icon-warriors": {
     "source": "generated",
     "path": "/assets/ui/icon-warriors.png"
+  },
+  "env-hollow-keep": {
+    "source": "generated",
+    "path": "/assets/env/env-hollow-keep.png"
+  },
+  "ending-party": {
+    "source": "generated",
+    "path": "/assets/splash/ending-party.png"
   }
 }
