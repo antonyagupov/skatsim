@@ -1,6 +1,6 @@
 import { loadSave, updateSave, type SaveData } from "../data/save";
 
-export type TrackId = "battle" | "battle_boss" | "world" | "village" | "none";
+export type TrackId = "battle" | "battle_boss" | "world" | "village" | "ending" | "none";
 
 type Note = {
   /** MIDI-ish step in C major scale index, or -1 for rest */
@@ -84,54 +84,59 @@ const BATTLE: TrackDef = {
 };
 
 const BATTLE_BOSS: TrackDef = {
-  bpm: 148,
-  leadType: "sawtooth",
-  bassType: "square",
+  bpm: 132,
+  leadType: "square",
+  bassType: "triangle",
   drums: true,
+  // Heavier fortress motif — grounded minor-feel phrases, fewer wild leaps
   leadA: [
-    { step: 7, beats: 0.25 },
-    { step: 7, beats: 0.25 },
-    { step: 9, beats: 0.5 },
-    { step: 11, beats: 0.5 },
-    { step: 9, beats: 0.25 },
-    { step: 7, beats: 0.25 },
+    { step: 4, beats: 0.5 },
+    { step: 4, beats: 0.25 },
+    { step: 2, beats: 0.25 },
+    { step: 0, beats: 0.5 },
+    { step: 2, beats: 0.5 },
+    { step: 4, beats: 0.75 },
+    { step: 5, beats: 0.25 },
+    { step: 4, beats: 0.5 },
+    { step: 2, beats: 0.5 },
+    { step: 0, beats: 1 },
+    { step: -1, beats: 0.5 },
+  ],
+  leadB: [
+    { step: 7, beats: 0.5 },
     { step: 5, beats: 0.5 },
     { step: 4, beats: 0.5 },
     { step: 2, beats: 0.5 },
     { step: 4, beats: 0.75 },
-    { step: 0, beats: 0.5 },
-  ],
-  leadB: [
-    { step: 11, beats: 0.5 },
-    { step: 12, beats: 0.25 },
-    { step: 11, beats: 0.25 },
-    { step: 9, beats: 0.5 },
+    { step: 5, beats: 0.25 },
     { step: 7, beats: 0.5 },
     { step: 9, beats: 0.5 },
-    { step: 11, beats: 0.75 },
-    { step: 14, beats: 0.5 },
-    { step: 12, beats: 0.5 },
-    { step: 11, beats: 1 },
+    { step: 7, beats: 0.5 },
+    { step: 5, beats: 0.5 },
+    { step: 4, beats: 1 },
   ],
   bass: [
     { step: 0, beats: 0.5 },
+    { step: -1, beats: 0.25 },
+    { step: 0, beats: 0.25 },
     { step: 0, beats: 0.5 },
     { step: 3, beats: 0.5 },
-    { step: 3, beats: 0.5 },
     { step: 4, beats: 0.5 },
+    { step: -1, beats: 0.25 },
+    { step: 4, beats: 0.25 },
     { step: 4, beats: 0.5 },
-    { step: 5, beats: 0.5 },
-    { step: 4, beats: 0.5 },
+    { step: 2, beats: 0.5 },
+    { step: 0, beats: 1 },
   ],
   arp: [
-    { step: 0, beats: 0.125 },
-    { step: 4, beats: 0.125 },
-    { step: 7, beats: 0.125 },
-    { step: 11, beats: 0.125 },
-    { step: 7, beats: 0.125 },
-    { step: 4, beats: 0.125 },
-    { step: 0, beats: 0.125 },
-    { step: 7, beats: 0.125 },
+    { step: 0, beats: 0.25 },
+    { step: 4, beats: 0.25 },
+    { step: 7, beats: 0.25 },
+    { step: 4, beats: 0.25 },
+    { step: 0, beats: 0.25 },
+    { step: 5, beats: 0.25 },
+    { step: 7, beats: 0.25 },
+    { step: 5, beats: 0.25 },
   ],
 };
 
@@ -196,6 +201,52 @@ const VILLAGE: TrackDef = {
     { step: 5, beats: 2 },
     { step: 3, beats: 2 },
     { step: 0, beats: 2 },
+  ],
+};
+
+/** Anxious hollow-keep ending theme — sparse, dissonant, low bpm. */
+const ENDING: TrackDef = {
+  bpm: 56,
+  leadType: "sawtooth",
+  bassType: "square",
+  drums: false,
+  leadA: [
+    { step: 0, beats: 1.5 },
+    { step: -1, beats: 0.5 },
+    { step: 1, beats: 1 },
+    { step: -1, beats: 1 },
+    { step: 4, beats: 2 },
+    { step: -1, beats: 1 },
+    { step: 3, beats: 1.5 },
+    { step: -1, beats: 1.5 },
+  ],
+  leadB: [
+    { step: 7, beats: 0.5 },
+    { step: 6, beats: 0.5 },
+    { step: -1, beats: 1 },
+    { step: 4, beats: 1.5 },
+    { step: -1, beats: 0.5 },
+    { step: 2, beats: 2 },
+    { step: -1, beats: 1 },
+    { step: 0, beats: 2 },
+  ],
+  bass: [
+    { step: 0, beats: 2 },
+    { step: -1, beats: 1 },
+    { step: 3, beats: 2 },
+    { step: -1, beats: 1 },
+    { step: 0, beats: 3 },
+    { step: -1, beats: 1 },
+  ],
+  arp: [
+    { step: 0, beats: 0.5 },
+    { step: -1, beats: 0.5 },
+    { step: 7, beats: 0.5 },
+    { step: -1, beats: 1.5 },
+    { step: 4, beats: 0.5 },
+    { step: -1, beats: 0.5 },
+    { step: 11, beats: 0.5 },
+    { step: -1, beats: 1.5 },
   ],
 };
 
@@ -343,6 +394,7 @@ export class AudioManager {
     if (id === "battle_boss") return BATTLE_BOSS;
     if (id === "world") return WORLD;
     if (id === "village") return VILLAGE;
+    if (id === "ending") return ENDING;
     return null;
   }
 

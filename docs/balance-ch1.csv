@@ -1,0 +1,7 @@
+node_id,role,target_win_rate,target_attempts,enemy_ids,new_mechanic,notes
+ruins_path,hook,0.75,1.5,slime150+bat120,core_loop,HP ~x2 so upgrades matter
+forest_trail,ramp,0.68,1.8,forest_slime210+shadow_bat160,elements,countdown tutorial
+old_quarry,mid_spike,0.50,2.5,armored_goblin320+100armor+bat,armor,Extra Move / armor tutorial
+dark_cave,breather,0.65,1.8,shadow_bat+cave_slime230,abilities_potion,reward beat 120G/3M
+goblin_fortress,episode_peak,0.40,3.5,chieftain900(+bat_on_phase2),phase2,skill check before Ch2
+hollow_keep,ending,n/a,1,none,meta_dialogue,Empty hall ending after Watchtower

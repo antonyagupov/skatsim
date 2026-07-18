@@ -3,6 +3,14 @@
     "source": "generated",
     "path": "/assets/refs/battle-screen-ref.png"
   },
+  "splash-bg": {
+    "source": "generated",
+    "path": "/assets/splash/splash-bg.png"
+  },
+  "splash-match3": {
+    "source": "generated",
+    "path": "/assets/splash/splash-match3.png"
+  },
   "hero-warrior": {
     "source": "generated",
     "path": "/assets/heroes/hero-warrior.png"
@@ -26,6 +34,10 @@
   "enemy-bat": {
     "source": "generated",
     "path": "/assets/enemies/enemy-bat.png"
+  },
+  "enemy-wraith": {
+    "source": "generated",
+    "path": "/assets/enemies/enemy-wraith.png"
   },
   "boss-goblin": {
     "source": "generated",
@@ -64,19 +76,19 @@
     "path": "/assets/gems/gem-light.png"
   },
   "hero-warrior-portrait": {
-    "source": "procedural",
+    "source": "generated",
     "path": "/assets/portraits/hero-warrior-portrait.png"
   },
   "hero-mage-portrait": {
-    "source": "procedural",
+    "source": "generated",
     "path": "/assets/portraits/hero-mage-portrait.png"
   },
   "hero-ranger-portrait": {
-    "source": "procedural",
+    "source": "generated",
     "path": "/assets/portraits/hero-ranger-portrait.png"
   },
   "hero-priest-portrait": {
-    "source": "procedural",
+    "source": "generated",
     "path": "/assets/portraits/hero-priest-portrait.png"
   },
   "icon-gold": {
@@ -102,5 +114,13 @@
   "icon-warriors": {
     "source": "generated",
     "path": "/assets/ui/icon-warriors.png"
+  },
+  "env-hollow-keep": {
+    "source": "generated",
+    "path": "/assets/env/env-hollow-keep.png"
+  },
+  "ending-party": {
+    "source": "generated",
+    "path": "/assets/splash/ending-party.png"
   }
 }

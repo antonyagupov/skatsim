@@ -3,7 +3,7 @@ import type { BuildingId } from "../systems/combat/progression";
 import type { TutorialStepId } from "../systems/tutorial/TutorialManager";
 
 export const SAVE_KEY = "skatsim.save.v1";
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 5;
 
 export type SaveData = {
   version: number;
@@ -17,6 +17,12 @@ export type SaveData = {
   fortressNodeCompleted: boolean;
   bossDefeated: boolean;
   chapter2Unlocked: boolean;
+  marshNodeCompleted: boolean;
+  bridgeNodeCompleted: boolean;
+  watchtowerNodeCompleted: boolean;
+  hollowKeepCompleted: boolean;
+  endingSeen: boolean;
+  introSeen: boolean;
   tutorialCompleted: boolean;
   tutorialSteps: Partial<Record<TutorialStepId, boolean>>;
   gold: number;
@@ -27,6 +33,8 @@ export type SaveData = {
   sfxVolume: number;
   musicMuted: boolean;
   sfxMuted: boolean;
+  /** Completed Hollow Keep memory wipes — scales next-loop difficulty. */
+  memoryWipes: number;
 };
 
 export const DEFAULT_SAVE: SaveData = {
@@ -40,6 +48,12 @@ export const DEFAULT_SAVE: SaveData = {
   fortressNodeCompleted: false,
   bossDefeated: false,
   chapter2Unlocked: false,
+  marshNodeCompleted: false,
+  bridgeNodeCompleted: false,
+  watchtowerNodeCompleted: false,
+  hollowKeepCompleted: false,
+  endingSeen: false,
+  introSeen: false,
   tutorialCompleted: false,
   tutorialSteps: {},
   gold: 0,
@@ -59,6 +73,7 @@ export const DEFAULT_SAVE: SaveData = {
   sfxVolume: 0.55,
   musicMuted: false,
   sfxMuted: false,
+  memoryWipes: 0,
 };
 
 type LegacySave = Partial<SaveData> & {
@@ -75,7 +90,7 @@ function clampNonNeg(n: unknown): number {
   return Math.max(0, v);
 }
 
-/** Migrate v1 (unversioned / partial) saves into v2 without destroying progress. */
+/** Migrate older saves into current version without destroying progress. */
 export function migrateSave(raw: LegacySave | null | undefined): SaveData {
   if (!raw || typeof raw !== "object") return { ...DEFAULT_SAVE };
 
@@ -90,6 +105,12 @@ export function migrateSave(raw: LegacySave | null | undefined): SaveData {
     fortressNodeCompleted: Boolean(raw.fortressNodeCompleted),
     bossDefeated: Boolean(raw.bossDefeated ?? raw.fortressNodeCompleted),
     chapter2Unlocked: Boolean(raw.chapter2Unlocked ?? raw.fortressNodeCompleted),
+    marshNodeCompleted: Boolean(raw.marshNodeCompleted),
+    bridgeNodeCompleted: Boolean(raw.bridgeNodeCompleted),
+    watchtowerNodeCompleted: Boolean(raw.watchtowerNodeCompleted),
+    hollowKeepCompleted: Boolean(raw.hollowKeepCompleted),
+    endingSeen: Boolean(raw.endingSeen),
+    introSeen: Boolean(raw.introSeen),
     tutorialCompleted: Boolean(raw.tutorialCompleted),
     tutorialSteps:
       raw.tutorialSteps && typeof raw.tutorialSteps === "object"
@@ -114,6 +135,7 @@ export function migrateSave(raw: LegacySave | null | undefined): SaveData {
       typeof raw.sfxVolume === "number" ? raw.sfxVolume : DEFAULT_SAVE.sfxVolume,
     musicMuted: Boolean(raw.musicMuted),
     sfxMuted: Boolean(raw.sfxMuted),
+    memoryWipes: clampNonNeg(raw.memoryWipes),
     version: SAVE_VERSION,
   };
 
@@ -123,7 +145,14 @@ export function migrateSave(raw: LegacySave | null | undefined): SaveData {
 export function loadSave(): SaveData {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return { ...DEFAULT_SAVE, heroLevels: { ...DEFAULT_SAVE.heroLevels }, buildingLevels: { ...DEFAULT_SAVE.buildingLevels }, tutorialSteps: {} };
+    if (!raw) {
+      return {
+        ...DEFAULT_SAVE,
+        heroLevels: { ...DEFAULT_SAVE.heroLevels },
+        buildingLevels: { ...DEFAULT_SAVE.buildingLevels },
+        tutorialSteps: {},
+      };
+    }
     const parsed = JSON.parse(raw) as LegacySave;
     const migrated = migrateSave(parsed);
     if (parsed.version !== SAVE_VERSION) {
@@ -164,12 +193,24 @@ export function updateSave(patch: Partial<SaveData>): SaveData {
   return next;
 }
 
-export function resetSave(): SaveData {
-  const fresh = {
+/** Full reset. Pass `memoryWipe: true` after Hollow Keep to keep / bump loop difficulty. */
+export function resetSave(opts?: { memoryWipe?: boolean }): SaveData {
+  const prev = loadSave();
+  const memoryWipes = Math.min(
+    99,
+    clampNonNeg(prev.memoryWipes) + (opts?.memoryWipe ? 1 : 0),
+  );
+  const fresh: SaveData = {
     ...DEFAULT_SAVE,
     heroLevels: { ...DEFAULT_SAVE.heroLevels },
     buildingLevels: { ...DEFAULT_SAVE.buildingLevels },
     tutorialSteps: {},
+    memoryWipes,
+    // Keep audio prefs across wipes / manual resets
+    musicVolume: prev.musicVolume,
+    sfxVolume: prev.sfxVolume,
+    musicMuted: prev.musicMuted,
+    sfxMuted: prev.sfxMuted,
   };
   writeSave(fresh);
   return fresh;
@@ -237,8 +278,26 @@ export function applyVictoryProgress(
       patch.bossDefeated = true;
       patch.chapter2Unlocked = true;
       break;
+    case "marsh":
+      patch.marshNodeCompleted = true;
+      break;
+    case "bridge":
+      patch.bridgeNodeCompleted = true;
+      break;
+    case "watchtower":
+      patch.watchtowerNodeCompleted = true;
+      break;
     default:
       break;
   }
   return updateSave(patch);
+}
+
+/** Grant gold/materials without completing map nodes (defeat salvage). */
+export function applySalvageRewards(gold: number, materials: number): SaveData {
+  const save = loadSave();
+  return updateSave({
+    gold: save.gold + gold,
+    materials: save.materials + materials,
+  });
 }

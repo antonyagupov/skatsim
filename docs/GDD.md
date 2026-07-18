@@ -7,9 +7,9 @@
 | **Genre** | Fantasy JRPG + match-3 combat |
 | **Platform** | Browser (desktop-first, touch-capable) |
 | **Engine** | Phaser 3 + Vite + TypeScript |
-| **Status** | Playable chapter loop |
-| **Version** | 0.2.0 |
-| **Last updated** | 2026-07-16 |
+| **Status** | Playable Chapter 1 + Chapter 2 + ending |
+| **Version** | 0.2.0 (package); content beyond original v0.2 slice |
+| **Last updated** | 2026-07-18 |
 
 ---
 
@@ -34,13 +34,14 @@ A party of four heroes fights on a single integrated battle screen where **match
 ## 3. Core loop (implemented)
 
 ```
-Main Menu
-  → World Map (five battle nodes + Village)
-    → Battle (match-3 combat with countdowns)
-      → Rewards (gold + materials)
-        → Village (spend resources) or next node
-          → Boss (Goblin Fortress)
-            → Chapter 2 placeholder unlock
+Boot → Preload (load bar)
+  → Splash (SKATSIM / A MATCH-3 FANTASY on splash-match3)
+  → Menu (party splash-bg)
+    → Intro (visual novel, once if !introSeen)
+    → World Map
+      → Village | Chapter 1 battles | Chapter 2 battles | Hollow Keep
+        → Battle → Rewards → World
+        → Ending (Hollow Keep) → resetSave → Menu
 ```
 
 ---
@@ -49,14 +50,20 @@ Main Menu
 
 | Scene | Purpose |
 |---|---|
-| Boot / Preload | Load assets + procedural prismatic gem |
-| Menu | Start; unlocks audio on Play |
-| World | Chapter 1 map: Village + five battle nodes |
+| Boot / Preload | Load assets; procedural prismatic gem; short title splash |
+| Menu | Play unlocks audio; routes to Intro or World |
+| Intro | One-shot VN party intro (`introSeen`) |
+| World | Map graph: Village + Ch.1 + Ch.2 + Hollow Keep |
 | Village | Mine, Training Ground, Workshop |
-| Battle | Integrated battlefield + board + hero HUD |
+| Battle | Arena + left portrait cards + 7×7 board |
 | Rewards | Gold/materials payout, persist progress |
+| Ending | Hollow Keep dialogue → memory wipe / save reset |
 
-**Save key:** `skatsim.save.v1` (payload version field `2`, migrated from unversioned v1).
+**Save key:** `skatsim.save.v1` (payload `version: 5`, migrated from older payloads). `memoryWipes` persists across Hollow Keep resets and scales enemy HP/ATK/armor by +15% per wipe.
+
+**Splash art:**
+- `splash-match3` — gem ritual altar (post-load title beat only)
+- `splash-bg` — party lineup (Menu + Intro)
 
 ---
 
@@ -65,11 +72,13 @@ Main Menu
 ### 5.1 Layout (implemented)
 
 - **Stage:** Side-view arena, internal resolution **960×720**, pixel art, FIT scale, canvas centered by Phaser.
-- **Left / party:** Four heroes face right; compact staggered formation; contact shadows.
-- **Right / foes:** Enemies face left; HP, element tint, attack countdown badges.
-- **Center:** Open for projectiles, VFX, damage numbers.
-- **Upper ~52%:** Battlefield (normal arena or fortress boss backdrop).
-- **Lower:** Compact hero HUD strip + 7×7 board (cell size capped at 40px so the board does not dominate).
+- **Upper ~52% (`fieldFraction`):** Battlefield (normal arena or fortress boss backdrop).
+- **Left / party:** Large **portrait cards** with HP / charge / shield bars; ability glow when ready. Cards are the interactive party (potion / ability). Attack lunges and projectiles use the portrait as home.
+- **Right / foes:** Enemies face left; HP, armor bar, element tint, countdown badges, target marker.
+- **Center:** Projectiles, VFX, damage / affinity float text.
+- **Lower:** 7×7 board (`maxGemCell` = 50).
+
+Layout constants: `partyX≈0.02`, `enemyX≈0.82`, `partyPortraitSize=78`, `partyCardW=152`, `partyCardH=92` (`src/data/mapNodes.ts` → `BATTLE_LAYOUT`).
 
 ### 5.2 Turn structure
 
@@ -80,7 +89,7 @@ Main Menu
 5. Else, on a **normal** turn (not an Extra Move): reduce every living enemy countdown by 1; enemies at 0 attack and reset countdown.
 6. If all heroes dead → **DEFEAT**; else **PLAYER_INPUT**.
 
-**Extra Move (match of four):** after resolution, the player gains one extra action. That extra action does **not** reduce enemy countdowns. Consecutive Extra Moves are capped (streak ≤ 2).
+**Extra Move (match of four):** after resolution, the player gains one extra action. That extra action does **not** reduce enemy countdowns. Consecutive Extra Moves are capped (streak ≤ 2). Match of four also creates a **Line Gem** (row or column, from match axis).
 
 ### 5.3 Match-3 rules
 
@@ -88,15 +97,30 @@ Main Menu
 |---|---|
 | Board size | 7×7 |
 | Gem types | Flame, Ice, Leaf, Light |
-| Special | Prismatic Gem (match of five) |
+| Specials | Prismatic (match of 5); Line H/V (match of 4) |
 | Match | ≥3 in a row or column |
-| Match of 4 | Extra Move + small charge bonus |
+| Match of 4 | Extra Move + Line Gem + small charge bonus |
 | Match of 5 | Creates Prismatic Gem + larger charge bonus |
+| Line Gem | Swap with any adjacent gem → clear that row or column; cascades continue |
 | Prismatic | Swap with a color → clear all gems of that color |
 | Dead board | Shuffle existing gems; no immediate matches; ≥1 legal move |
 | Cascade mult | 1.0 → 1.15 → 1.3 → up to 1.45 |
+| Cascade VFX | Clear flash → gravity fall → fill from top (short tweens) |
 
 Prismatic gems never appear on the initial generated board.
+
+### 5.3b Status effects (light layer)
+
+| Status | Source | Effect |
+|---|---|---|
+| Burn | Flame matches / Warrior ability | DoT ~10% of dealt match damage at end of enemy phase, 2 turns |
+| Freeze | Ice matches / Mage ability | Cancels the next enemy attack once |
+
+### 5.3c Encounter objectives
+
+Most battles are **eliminate** (kill all enemies). Watchtower is **survive 6 turns** (party must still have ≥1 hero alive). Defeat grants ~15% salvage gold/materials (no node completion).
+
+Enemy countdown badges show a telegraph letter: `!` single, `C` cleaver, `W` war cry; tint intensifies when countdown ≤ 1.
 
 ### 5.4 Gem ↔ hero mapping
 
@@ -127,41 +151,67 @@ Modifiers: strong ×1.5 (`WEAK`), weak ×0.75 (`RESIST`), else ×1.0.
 | Ranger | Marked Shot | Lowest % HP; ×1.5 if target below 35% HP |
 | Priest | Restoring Light | Heal all living heroes; excess → temporary shield (cap 30% max HP) |
 
-### 5.7 Enemy countdowns
+### 5.7 Enemy countdowns (base defs)
 
 | Enemy | Countdown | HP / Atk | Notes |
 |---|---|---|---|
-| Slime | 2 | 85 / 12 | Targets lowest % HP hero |
-| Bat | 1 | 65 / 10 | Random living hero; frequent |
-| Armored Goblin | 3 | 170 / 22 (+50 armor) | Heavy hit; armor pool absorbs first |
-| Goblin Chieftain | 2→1 | 380 / 26 | Boss; see §7 |
+| Slime | 2 | 150 / 10 | Lowest % HP hero |
+| Bat | 1 | 120 / 8 | Random living hero |
+| Forest Slime | 2 | 210 / 13 | Ch.1 ramp |
+| Shadow Bat | 1 | 160 / 11 | Ch.1 / Ch.2 |
+| Armored Goblin | 3 | 320 / 21 (+100 armor) | Armor pool first |
+| Cave Slime | 2 | 230 / 14 | Cave breather |
+| Goblin Chieftain | 2→1 | 900 / 29 | Boss; see §7 |
+| Marsh Slime | 2 | 300 / 16 | Ch.2 |
+| Wraith | 2 | 320 / 18 | Yellow; Ch.2 |
+
+**Match → combat VFX:** one match resolve produces one wave of hero attacks; projectiles and hit-flash on targets. WEAK / RESIST float text on elemental affinity.
+
+Hero training: **+22% stats per level** above 1 (Lv3 ≈ ×1.44). Balance notes: `docs/balance-ch1.csv`.
 
 ---
 
-## 6. World map — Chapter 1
+## 6. World map
+
+### Chapter 1
 
 | Node | Encounter | Rewards |
 |---|---|---|
 | Ruins Path | Slime + Bat | 40G, 1M |
 | Forest Trail | Forest Slime + Shadow Bat | 60G, 1M |
 | Old Quarry | Armored Goblin + Bat | 80G, 2M |
-| Dark Cave | Elite pack | 100G, 2M |
+| Dark Cave | Shadow Bat + Cave Slime | 120G, 3M |
 | Goblin Fortress | **Boss** Goblin Chieftain | 160G, 4M |
+
+Difficulty curve: hook → ramp → mid spike → breather → episode peak.
 
 Nodes unlock sequentially. Village is always available. Boss victory sets `chapter2Unlocked`.
 
+### Chapter 2 (after fortress)
+
+| Node | Encounter | Rewards |
+|---|---|---|
+| Marsh Crossing | Marsh Slime + Wraith | 120G, 3M |
+| Ruined Bridge | Wraith + Shadow Bat | 140G, 3M |
+| Watchtower | Wraith + Armored Goblin + Bat | 180G, 5M |
+| **Hollow Keep** | Ending dialogue (no fight) | — |
+
+Hollow Keep unlocks after Watchtower (`watchtowerNodeCompleted`). Sets `hollowKeepCompleted` / `endingSeen`, then `EndingScene` runs a meta dialogue and **resets save** → Menu.
+
 Mine level 2 applies **+20% gold** to battle rewards.
+
+Map art: `env-worldmap`. Node labels use dark underlays for contrast.
 
 ---
 
 ## 7. Boss — Goblin Chieftain
 
 - Element: **green**
-- HP 380, attack 26; countdown max 2
+- HP 900, attack 29; countdown max 2
 - Patterns: **Cleaver Strike** (heavy ST) and **War Cry** (light party damage + next-attack bonus)
 - At ≤50% HP: phase change → countdown max 1 for subsequent cycles; may summon one Bat
 - Distinct fortress backdrop (`battle-boss-bg`) and dedicated `battle_boss` music track
-- Beatable with targeting, Priest heals, elemental weakness, abilities, and Extra Moves
+- Beatable with targeting, Priest heals, elemental weakness, abilities, Extra Moves, and Village upgrades
 
 ---
 
@@ -179,13 +229,23 @@ Facilities show distinct visual states at level 2 (props/overlays). Potion resto
 
 ## 9. Economy
 
-Two resources only: **Gold** and **Materials**. Persisted in save. Granted on Rewards screen.
+Two resources only: **Gold** and **Materials**. Persisted in save. Granted on Rewards screen. Tables live in `src/systems/economy/rewards.ts`.
 
 ---
 
 ## 10. Tutorial
 
-Contextual, skippable prompts teach: select enemy → swap → colors → countdowns → match four → abilities → visit Village. Completion stored in `tutorialSteps` / `tutorialCompleted`. Resettable via debug.
+Gated by encounter; short banners (skippable):
+
+| Encounter | Prompt focus |
+|---|---|
+| Ruins | Core loop: tap enemy + match 3+ (select / swap / color as one banner) |
+| Forest | Countdown threat |
+| Quarry | Armor / Extra Move |
+| Cave+ | Ability ready |
+| Village | After Forest — spend gold before the boss |
+
+Completion stored in `tutorialSteps` / `tutorialCompleted`. Resettable via debug.
 
 ---
 
@@ -193,7 +253,7 @@ Contextual, skippable prompts teach: select enemy → swap → colors → countd
 
 Procedural Web Audio (`AudioManager`):
 
-- Tracks: world, village, battle, battle_boss (faster battle)
+- Tracks: `world`, `village`, `battle`, `battle_boss`, `ending`
 - Same track id does not restart (no duplicate loops)
 - SFX for match 3/4/5, Extra Move, special gem, elements, countdown, upgrades, rewards, boss phase
 - Volumes/mute persist in save
@@ -213,22 +273,31 @@ Procedural Web Audio (`AudioManager`):
 | `src/scenes/*` | Presentation only |
 | `src/audio/*` | Music / SFX |
 
-Logic stays Phaser-free and unit-tested.
+Logic stays Phaser-free and unit-tested. Vite `base: "/skatsim/"` for GitHub Pages; asset paths resolved via `import.meta.env.BASE_URL`.
 
 ---
 
-## 13. v0.2 success criteria
+## 13. Current success criteria
 
-A player can clear the five-node chapter, defeat the Goblin Chieftain, spend gold/materials in the Village, upgrade heroes and buildings, keep progression after reload, and complete the tutorial loop — with party on the **left** and enemies on the **right**.
+A player can:
+
+1. See title splash → Menu → Intro (once) → World.
+2. Clear Chapter 1 (five nodes), defeat the Goblin Chieftain, use Village upgrades.
+3. Continue into Chapter 2 (Marsh → Bridge → Watchtower).
+4. Reach Hollow Keep ending and return to a fresh Menu save.
+5. Keep mid-run progress across reloads; complete the gated tutorial.
+
+Party on the **left** (portrait cards), enemies on the **right**.
 
 ---
 
-## 14. Out of scope (post-0.2)
+## 14. Out of scope (next)
 
-- Multiple currencies, idle Mine timers, inventory items beyond the battle potion
-- Full dialogue / narrative system
+- Multiple currencies, idle Mine timers, inventory beyond the battle potion
+- Full reusable dialogue / quest system (Intro + Ending stay one-off)
 - Additional special gem types
 - Cloud save / multiplayer
+- Building Lv3 / hero passives beyond current scaling
 
 ---
 
@@ -236,16 +305,22 @@ A player can clear the five-node chapter, defeat the Goblin Chieftain, spend gol
 
 ```
 BOARD_SIZE = 7
-maxGemCell = 40
+maxGemCell = 50
 fieldFraction ≈ 0.52
 Ability costs: Warrior 10, Mage 12, Ranger 10, Priest 12
-Hero levels: 1–3 (+12% stats per level above 1)
+Hero levels: 1–3 (+22% stats per level above 1)
 Building levels: 1–2
 Cascade mult: 1 / 1.15 / 1.3 / ≤1.45
 Elements: R>G>Y>B>R
-Battle layout: partyX≈0.14, enemyX≈0.82
-Ruins: Slime 85/12, Bat 65/10
-Boss: Goblin Chieftain 380/26
+Battle layout: party cards left (partyX≈0.02), enemyX≈0.82
+partyPortraitSize = 78, partyCardW = 152, partyCardH = 92
+Ruins: Slime 150/10, Bat 120/8
+Boss: Goblin Chieftain 900/29
+Wraith: 320/18 (yellow)
+Save: skatsim.save.v1 version 5
+Flags: introSeen, chapter2Unlocked, marsh/bridge/watchtower/hollowKeepCompleted, endingSeen
+Splash: splash-match3 (title), splash-bg (menu/intro)
+Ending: Hollow Keep → EndingScene → resetSave → Menu
 ```
 
 Primary sources of truth:
@@ -255,3 +330,4 @@ Primary sources of truth:
 - `src/systems/combat/*`
 - `src/data/mapNodes.ts`
 - `src/data/save.ts`
+- `docs/balance-ch1.csv`

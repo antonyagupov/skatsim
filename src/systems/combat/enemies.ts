@@ -5,7 +5,7 @@ export type EnemyAttackPattern = "single_lowest" | "single_random" | "cleaver" |
 
 export type EnemyDef = {
   /** Texture / catalog id */
-  typeId: EnemyId | "enemy-armored-goblin";
+  typeId: EnemyId | "enemy-armored-goblin" | "enemy-wraith";
   name: string;
   maxHp: number;
   attack: number;
@@ -18,10 +18,19 @@ export type EnemyDef = {
   patterns?: EnemyAttackPattern[];
 };
 
+export type StatusId = "burn" | "freeze";
+
+export type EnemyStatus = {
+  id: StatusId;
+  turns: number;
+  /** Burn: damage per tick */
+  potency?: number;
+};
+
 export type EnemyRuntime = {
   /** Unique instance id for targeting */
   id: string;
-  typeId: EnemyId | "enemy-armored-goblin";
+  typeId: EnemyId | "enemy-armored-goblin" | "enemy-wraith";
   name: string;
   hp: number;
   maxHp: number;
@@ -41,6 +50,7 @@ export type EnemyRuntime = {
   nextAttackBonus: number;
   /** Texture key for Phaser */
   textureKey: string;
+  statuses: EnemyStatus[];
 };
 
 let instanceCounter = 0;
@@ -55,7 +65,11 @@ function makeRuntime(def: EnemyDef, suffix?: string): EnemyRuntime {
     suffix ??
     `${def.typeId}-${instanceCounter}`;
   const textureKey =
-    def.typeId === "enemy-armored-goblin" ? "boss-goblin" : def.typeId;
+    def.typeId === "enemy-armored-goblin"
+      ? "boss-goblin"
+      : def.typeId === "enemy-wraith"
+        ? "enemy-wraith"
+        : def.typeId;
   return {
     id,
     typeId: def.typeId,
@@ -75,14 +89,53 @@ function makeRuntime(def: EnemyDef, suffix?: string): EnemyRuntime {
     phase: 0,
     nextAttackBonus: 0,
     textureKey,
+    statuses: [],
+  };
+}
+
+export function previewEnemyPattern(enemy: EnemyRuntime): EnemyAttackPattern {
+  if (!enemy.isBoss || enemy.patterns.length < 2) {
+    return enemy.patterns[0] ?? "single_lowest";
+  }
+  const useWarCry = enemy.hp % 2 === 0 || enemy.phase >= 1;
+  return useWarCry && enemy.patterns.includes("war_cry")
+    ? "war_cry"
+    : "cleaver";
+}
+
+export function applyStatus(
+  enemy: EnemyRuntime,
+  status: EnemyStatus,
+): EnemyRuntime {
+  const statuses = enemy.statuses.filter((s) => s.id !== status.id);
+  statuses.push(status);
+  return { ...enemy, statuses };
+}
+
+export function tickStatuses(
+  enemy: EnemyRuntime,
+): { enemy: EnemyRuntime; burnDamage: number; freezeBlocksAttack: boolean } {
+  let burnDamage = 0;
+  let freezeBlocksAttack = false;
+  const next: EnemyStatus[] = [];
+  for (const s of enemy.statuses) {
+    if (s.id === "burn" && s.potency) burnDamage += s.potency;
+    if (s.id === "freeze") freezeBlocksAttack = true;
+    const turns = s.turns - 1;
+    if (turns > 0) next.push({ ...s, turns });
+  }
+  return {
+    enemy: { ...enemy, statuses: next },
+    burnDamage,
+    freezeBlocksAttack,
   };
 }
 
 export const SLIME: EnemyDef = {
   typeId: "enemy-slime",
   name: "Slime",
-  maxHp: 85,
-  attack: 12,
+  maxHp: 150,
+  attack: 10,
   element: "green",
   countdownMax: 2,
   targetRule: "lowest_hp_pct",
@@ -91,8 +144,8 @@ export const SLIME: EnemyDef = {
 export const BAT: EnemyDef = {
   typeId: "enemy-bat",
   name: "Bat",
-  maxHp: 65,
-  attack: 10,
+  maxHp: 120,
+  attack: 8,
   element: "blue",
   countdownMax: 1,
   targetRule: "random",
@@ -101,43 +154,43 @@ export const BAT: EnemyDef = {
 export const FOREST_SLIME: EnemyDef = {
   ...SLIME,
   name: "Forest Slime",
-  maxHp: 110,
-  attack: 14,
+  maxHp: 210,
+  attack: 13,
   element: "green",
 };
 
 export const SHADOW_BAT: EnemyDef = {
   ...BAT,
   name: "Shadow Bat",
-  maxHp: 85,
-  attack: 12,
+  maxHp: 160,
+  attack: 11,
   element: "blue",
 };
 
 export const ARMORED_GOBLIN: EnemyDef = {
   typeId: "enemy-armored-goblin",
   name: "Armored Goblin",
-  maxHp: 170,
-  attack: 22,
+  maxHp: 320,
+  attack: 21,
   element: "red",
   countdownMax: 3,
   targetRule: "lowest_hp_pct",
-  armor: 50,
+  armor: 100,
 };
 
 export const CAVE_SLIME: EnemyDef = {
   ...SLIME,
   name: "Cave Slime",
-  maxHp: 135,
-  attack: 17,
+  maxHp: 230,
+  attack: 14,
   element: "green",
 };
 
 export const GOBLIN_CHIEFTAIN: EnemyDef = {
   typeId: "boss-goblin",
   name: "Goblin Chieftain",
-  maxHp: 380,
-  attack: 26,
+  maxHp: 900,
+  attack: 29,
   element: "green",
   countdownMax: 2,
   targetRule: "lowest_hp_pct",
@@ -145,24 +198,71 @@ export const GOBLIN_CHIEFTAIN: EnemyDef = {
   patterns: ["cleaver", "war_cry"],
 };
 
+export const WRAITH: EnemyDef = {
+  typeId: "enemy-wraith",
+  name: "Wraith",
+  maxHp: 320,
+  attack: 18,
+  element: "yellow",
+  countdownMax: 2,
+  targetRule: "lowest_hp_pct",
+};
+
+export const MARSH_SLIME: EnemyDef = {
+  ...SLIME,
+  name: "Marsh Slime",
+  maxHp: 300,
+  attack: 16,
+  element: "green",
+};
+
 export function createEnemiesFromDefs(defs: EnemyDef[]): EnemyRuntime[] {
   resetEnemyInstanceCounter();
   return defs.map((d) => makeRuntime(d));
 }
 
-export function createEncounterEnemies(encounterId?: string): EnemyRuntime[] {
+/** +15% enemy HP/ATK/armor per completed memory wipe (capped). */
+export function loopDifficultyMultiplier(memoryWipes: number): number {
+  const w = Math.max(0, Math.min(20, Math.floor(memoryWipes)));
+  return 1 + w * 0.15;
+}
+
+export function scaleEnemyDef(def: EnemyDef, mult: number): EnemyDef {
+  if (mult <= 1) return def;
+  return {
+    ...def,
+    maxHp: Math.max(1, Math.round(def.maxHp * mult)),
+    attack: Math.max(1, Math.round(def.attack * mult)),
+    armor: def.armor != null ? Math.max(0, Math.round(def.armor * mult)) : def.armor,
+  };
+}
+
+export function createEncounterEnemies(
+  encounterId?: string,
+  memoryWipes = 0,
+): EnemyRuntime[] {
+  const mult = loopDifficultyMultiplier(memoryWipes);
+  const scale = (defs: EnemyDef[]) =>
+    createEnemiesFromDefs(defs.map((d) => scaleEnemyDef(d, mult)));
+
   switch (encounterId) {
     case "forest":
-      return createEnemiesFromDefs([FOREST_SLIME, SHADOW_BAT]);
+      return scale([FOREST_SLIME, SHADOW_BAT]);
     case "quarry":
-      return createEnemiesFromDefs([ARMORED_GOBLIN, BAT]);
+      return scale([ARMORED_GOBLIN, BAT]);
     case "cave":
-      return createEnemiesFromDefs([SHADOW_BAT, CAVE_SLIME, BAT]);
+      return scale([SHADOW_BAT, CAVE_SLIME]);
     case "fortress":
-      return createEnemiesFromDefs([GOBLIN_CHIEFTAIN]);
+      return scale([GOBLIN_CHIEFTAIN]);
+    case "marsh":
+      return scale([MARSH_SLIME, WRAITH]);
+    case "bridge":
+      return scale([WRAITH, SHADOW_BAT]);
+    case "watchtower":
+      return scale([WRAITH, ARMORED_GOBLIN, BAT]);
     case "ruins":
     default:
-      return createEnemiesFromDefs([SLIME, BAT]);
+      return scale([SLIME, BAT]);
   }
 }
 

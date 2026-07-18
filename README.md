@@ -23,12 +23,23 @@ Repo: https://github.com/antonyagupov/skatsim (site is served from the `gh-pages
 - **Potion:** battle Potion button, then click a living hero (one use per fight)
 - **Audio:** ♪ / ♫ toggles in battle; settings persist
 - **Map:** leave battle back to the world map
-- **Debug (dev only):** `Ctrl+Shift+D` → `window.__SKATSIM_DEBUG__`
+- **Debug:** `Alt+Shift+D` dumps `window.__SKATSIM_DEBUG__` (Ctrl+Shift+D is stolen by Cursor/VS Code). Works in `npm run dev`, or on live with `?debug=1`, or after `localStorage.setItem('skatsim.debug','1')`.
 
 ### Loop
-World Map → Battle → Rewards (gold + materials) → Village upgrades → harder nodes → Goblin Fortress boss → Chapter 2 unlock flag.
+World Map → Battle → Rewards (gold + materials) → Village upgrades → harder nodes → Goblin Fortress boss → Chapter 2 (Marsh → Bridge → Watchtower) → Hollow Keep ending.
 
-Chapter 1 nodes: Ruins Path → Forest Trail → Old Quarry → Dark Cave → Goblin Fortress.
+Chapter 1 nodes: Ruins Path → Forest Trail → Old Quarry → Dark Cave → Goblin Fortress.  
+Chapter 2 (after boss): Marsh Crossing → Ruined Bridge → Watchtower → Hollow Keep.
+
+### Debug console cheats (when API is on)
+
+```js
+__SKATSIM_DEBUG__.unlockAllNodes()
+__SKATSIM_DEBUG__.addGold(999)
+__SKATSIM_DEBUG__.winBattle()          // must be in Battle
+__SKATSIM_DEBUG__.dumpState()
+__SKATSIM_DEBUG__.resetSave()
+```
 
 ## Scripts
 
@@ -37,11 +48,12 @@ Chapter 1 nodes: Ruins Path → Forest Trail → Old Quarry → Dark Cave → Go
 | `npm run dev` | Dev server |
 | `npm test` | Vitest unit tests |
 | `npm run build` | Production build |
+| `npm run deploy` | Build + publish `dist/` to `gh-pages` |
 | `npm run generate:assets` | Optional OpenRouter art (budget-capped; not required for v0.2) |
 
 ## Architecture
 
 - Scenes present; `src/systems/` owns pure game logic (match-3, combat, economy, tutorial)
-- Save key `skatsim.save.v1` with payload `version: 2` + migration from v1
+- Save key `skatsim.save.v1` with payload `version: 5` + migration from older
 - Procedural Web Audio in `src/audio/AudioManager.ts`
 - Design doc: `docs/GDD.md`

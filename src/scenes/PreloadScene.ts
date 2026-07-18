@@ -51,9 +51,66 @@ export class PreloadScene extends Phaser.Scene {
         }
       });
       this.ensurePrismaticTexture();
-      this.scene.start("Menu");
+      this.ensureLineGemTextures();
+      this.showSplash();
     });
     this.load.start();
+  }
+
+  private showSplash(): void {
+    const { width, height } = this.scale;
+    this.children.removeAll(true);
+
+    const splashKey = this.textures.exists("splash-match3")
+      ? "splash-match3"
+      : this.textures.exists("splash-bg")
+        ? "splash-bg"
+        : null;
+    if (splashKey) {
+      this.add.image(width / 2, height / 2, splashKey).setDisplaySize(width, height);
+    } else {
+      this.add.rectangle(width / 2, height / 2, width, height, 0x14101a);
+    }
+
+    const shade = this.add.graphics();
+    shade.fillGradientStyle(0x08060d, 0x08060d, 0x08060d, 0x08060d, 0.58, 0.58, 0.08, 0.08);
+    shade.fillRect(0, 0, width, height);
+
+    this.add
+      .text(width / 2 + 3, height * 0.24 + 4, "SKATSIM", {
+        fontFamily: "Cinzel, Palatino, serif",
+        fontSize: "68px",
+        color: "#09060d",
+      })
+      .setOrigin(0.5)
+      .setAlpha(0.7);
+
+    this.add
+      .text(width / 2, height * 0.24, "SKATSIM", {
+        fontFamily: "Cinzel, Palatino, serif",
+        fontSize: "68px",
+        color: "#f7efdc",
+        stroke: "#5f351d",
+        strokeThickness: 2,
+      })
+      .setOrigin(0.5);
+
+    this.add
+      .text(width / 2, height * 0.32, "A MATCH-3 FANTASY", {
+        fontFamily: "monospace",
+        fontSize: "13px",
+        color: "#e6c78e",
+      })
+      .setLetterSpacing(5)
+      .setOrigin(0.5);
+
+    this.cameras.main.fadeIn(350, 10, 8, 16);
+    this.time.delayedCall(1100, () => {
+      this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+        this.scene.start("Menu");
+      });
+      this.cameras.main.fadeOut(260, 10, 8, 16);
+    });
   }
 
   /** Procedural prismatic gem — no paid API needed. */
@@ -77,5 +134,37 @@ export class PreloadScene extends Phaser.Scene {
     g.generateTexture("gem-prismatic", 48, 48);
     g.destroy();
     this.textures.get("gem-prismatic").setFilter(Phaser.Textures.FilterMode.NEAREST);
+  }
+
+  /** Procedural line gems (match-4 specials). */
+  private ensureLineGemTextures(): void {
+    if (!this.textures.exists("gem-line-h")) {
+      const g = this.make.graphics({ x: 0, y: 0 });
+      g.fillStyle(0x1a2030, 1);
+      g.fillRoundedRect(4, 4, 40, 40, 8);
+      g.fillStyle(0x70d0ff, 1);
+      g.fillRoundedRect(8, 18, 32, 12, 4);
+      g.fillStyle(0xffffff, 0.85);
+      g.fillCircle(24, 24, 5);
+      g.lineStyle(2, 0xb8e8ff, 0.95);
+      g.strokeRoundedRect(4, 4, 40, 40, 8);
+      g.generateTexture("gem-line-h", 48, 48);
+      g.destroy();
+      this.textures.get("gem-line-h").setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
+    if (!this.textures.exists("gem-line-v")) {
+      const g = this.make.graphics({ x: 0, y: 0 });
+      g.fillStyle(0x1a2030, 1);
+      g.fillRoundedRect(4, 4, 40, 40, 8);
+      g.fillStyle(0x70d0ff, 1);
+      g.fillRoundedRect(18, 8, 12, 32, 4);
+      g.fillStyle(0xffffff, 0.85);
+      g.fillCircle(24, 24, 5);
+      g.lineStyle(2, 0xb8e8ff, 0.95);
+      g.strokeRoundedRect(4, 4, 40, 40, 8);
+      g.generateTexture("gem-line-v", 48, 48);
+      g.destroy();
+      this.textures.get("gem-line-v").setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
   }
 }

@@ -11,12 +11,19 @@ import {
   spawnSpecialGemAt,
   type Board,
 } from "../src/systems/match3/board";
-import { GEM_IDS, SPECIAL_GEM_ID, type GemId } from "../src/assets/types";
+import {
+  GEM_IDS,
+  LINE_GEM_H,
+  SPECIAL_GEM_ID,
+  type GemId,
+} from "../src/assets/types";
 import { createParty, HERO_DEFS } from "../src/systems/combat/heroes";
 import {
+  applyStatus,
   createFirstBattleEnemies,
   createEncounterEnemies,
   resetEnemyInstanceCounter,
+  tickStatuses,
 } from "../src/systems/combat/enemies";
 import { BattleController } from "../src/systems/BattleController";
 import {
@@ -36,6 +43,7 @@ import {
 import { BATTLE_LAYOUT, MAP_NODES, isNodeUnlocked } from "../src/data/mapNodes";
 import {
   computeBattleRewards,
+  computeDefeatRewards,
   ENCOUNTER_REWARDS,
 } from "../src/systems/economy/rewards";
 import {
@@ -47,7 +55,11 @@ import {
   markTutorialStep,
   resetTutorial,
   isTutorialStepDone,
+  tutorialCandidatesForEncounter,
+  CORE_LOOP_STEPS,
 } from "../src/systems/tutorial/TutorialManager";
+import { createRng } from "../src/systems/rng";
+import { DialogueRunner } from "../src/systems/dialogue/DialogueRunner";
 
 function boardFrom(rows: GemId[][]): Board {
   return rows.map((r) => r.slice());
@@ -97,6 +109,15 @@ describe("battle layout configuration", () => {
     expect(BATTLE_LAYOUT.enemySide).toBe("right");
     expect(BATTLE_LAYOUT.partyX).toBeLessThan(0.5);
     expect(BATTLE_LAYOUT.enemyX).toBeGreaterThan(0.5);
+  });
+
+  it("unlocks hollow keep after watchtower", () => {
+    const hollow = MAP_NODES.find((n) => n.id === "hollow-keep")!;
+    expect(hollow.kind).toBe("ending");
+    expect(hollow.sceneKey).toBe("Ending");
+    const save = { ...DEFAULT_SAVE, watchtowerNodeCompleted: true };
+    expect(isNodeUnlocked(hollow, save)).toBe(true);
+    expect(isNodeUnlocked(hollow, DEFAULT_SAVE)).toBe(false);
   });
 });
 
@@ -153,6 +174,118 @@ describe("match of four — extra action", () => {
       const e = ctrl.enemies.find((x) => x.id === prev.id)!;
       if (e.alive) expect(e.countdown).toBe(prev.cd);
     }
+  });
+
+  it("spawns a line gem on match of four", () => {
+    const swap = trySwap(craftedMatchFourBoard(), 0, 0, 1, 0);
+    expect(swap.ok).toBe(true);
+    if (!swap.ok) return;
+    const resolved = resolveBoard(swap.board, () => 0.2);
+    expect(resolved.matchFourOccurred).toBe(true);
+    const created = resolved.steps.some(
+      (s) => s.createdSpecial?.kind === "line-h" || s.createdSpecial?.kind === "line-v",
+    );
+    expect(created).toBe(true);
+  });
+
+  it("activating a line gem clears the axis", () => {
+    const board = craftedMatchBoard();
+    const withLine = spawnSpecialGemAt(board, 3, 3, "line-h");
+    expect(withLine[3]![3]).toBe(LINE_GEM_H);
+    const swap = trySwap(withLine, 3, 3, 3, 4);
+    expect(swap.ok).toBe(true);
+    if (!swap.ok) return;
+    expect(swap.lineClear?.axis).toBe("h");
+    const resolved = resolveBoard(swap.board, () => 0.35, undefined, swap.lineClear);
+    expect(resolved.lineActivations).toBe(1);
+    expect(resolved.steps[0]?.lineClearedCells?.length).toBe(BOARD_SIZE);
+  });
+});
+
+describe("defeat consolation", () => {
+  it("returns ~15% of win rewards", () => {
+    const win = computeBattleRewards("ruins", 1);
+    const loss = computeDefeatRewards("ruins", 1);
+    expect(loss.gold).toBe(Math.max(1, Math.round(win.gold * 0.15)));
+    expect(loss.materials).toBe(Math.max(0, Math.round(win.materials * 0.15)));
+  });
+});
+
+describe("status effects", () => {
+  it("burn deals DoT on tick", () => {
+    resetEnemyInstanceCounter();
+    let enemy = createFirstBattleEnemies()[0]!;
+    enemy = applyStatus(enemy, { id: "burn", turns: 2, potency: 12 });
+    const ticked = tickStatuses(enemy);
+    expect(ticked.burnDamage).toBe(12);
+    expect(ticked.enemy.statuses.some((s) => s.id === "burn" && s.turns === 1)).toBe(true);
+  });
+
+  it("freeze blocks the next attack", () => {
+    resetEnemyInstanceCounter();
+    const enemies = createFirstBattleEnemies().map((e) => ({
+      ...e,
+      hp: 5000,
+      maxHp: 5000,
+      countdown: 1,
+      statuses: [{ id: "freeze" as const, turns: 1 }],
+    }));
+    const ctrl = new BattleController(createParty(), enemies, craftedMatchBoard());
+    const res = ctrl.attemptSwap(0, 0, 1, 0, () => 0.25);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.turn.attacks.some((a) => a.kind === "status_freeze_block")).toBe(true);
+    expect(res.turn.attacks.some((a) => a.kind === "enemy_attack")).toBe(false);
+  });
+});
+
+describe("survive objective", () => {
+  it("wins after N enemy phases with heroes alive", () => {
+    resetEnemyInstanceCounter();
+    const enemies = createFirstBattleEnemies().map((e) => ({
+      ...e,
+      hp: 5000,
+      maxHp: 5000,
+      attack: 0,
+      countdown: 99,
+    }));
+    const ctrl = new BattleController(createParty(), enemies, craftedMatchBoard(), {
+      objective: { type: "survive", turns: 2 },
+    });
+    const a = ctrl.attemptSwap(0, 0, 1, 0, () => 0.25);
+    expect(a.ok).toBe(true);
+    if (!a.ok) return;
+    expect(a.turn.outcome).toBe("ongoing");
+    expect(ctrl.surviveTurnsElapsed).toBe(1);
+    ctrl.extraMovesRemaining = 0;
+    ctrl.extraMoveStreak = 0;
+    ctrl.board = craftedMatchBoard();
+    const b = ctrl.attemptSwap(0, 0, 1, 0, () => 0.3);
+    expect(b.ok).toBe(true);
+    if (!b.ok) return;
+    expect(ctrl.surviveTurnsElapsed).toBe(2);
+    expect(b.turn.outcome).toBe("victory");
+  });
+
+  it("watchtower map node advertises survive", () => {
+    const node = MAP_NODES.find((n) => n.encounterId === "watchtower");
+    expect(node?.objectivePreview).toBe("Survive 6 turns");
+  });
+});
+
+describe("dialogue runner", () => {
+  it("advances and skips lines", () => {
+    const runner = new DialogueRunner([
+      { speaker: "A", portraitKey: null, text: "one" },
+      { speaker: "B", portraitKey: null, text: "two" },
+    ]);
+    expect(runner.current?.text).toBe("one");
+    expect(runner.advance()?.text).toBe("two");
+    expect(runner.advance()).toBeNull();
+    expect(runner.done).toBe(true);
+    runner.reset();
+    runner.skip();
+    expect(runner.done).toBe(true);
   });
 });
 
@@ -296,7 +429,11 @@ describe("world map progression", () => {
     expect(isNodeUnlocked(quarry, save)).toBe(false);
     save.forestNodeCompleted = true;
     expect(isNodeUnlocked(quarry, save)).toBe(true);
-    expect(MAP_NODES.filter((n) => n.kind === "battle").length).toBe(5);
+    expect(MAP_NODES.filter((n) => n.kind === "battle").length).toBe(8);
+    const marsh = MAP_NODES.find((n) => n.id === "marsh-crossing")!;
+    expect(isNodeUnlocked(marsh, save)).toBe(false);
+    save.chapter2Unlocked = true;
+    expect(isNodeUnlocked(marsh, save)).toBe(true);
   });
 });
 
@@ -304,6 +441,7 @@ describe("rewards and economy", () => {
   it("grants encounter rewards and mine multiplier", () => {
     expect(ENCOUNTER_REWARDS.ruins.gold).toBe(40);
     expect(ENCOUNTER_REWARDS.fortress.materials).toBe(4);
+    expect(ENCOUNTER_REWARDS.watchtower.gold).toBe(180);
     expect(goldRewardMultiplier(1)).toBe(1);
     expect(goldRewardMultiplier(2)).toBe(1.2);
     const boosted = computeBattleRewards("ruins", 2);
@@ -314,8 +452,17 @@ describe("rewards and economy", () => {
     const l1 = scaledHeroStats("hero-warrior", 1);
     const l3 = scaledHeroStats("hero-warrior", 3);
     expect(l3.maxHp).toBeGreaterThan(l1.maxHp);
+    // +22% per level above 1 → Lv3 ≈ ×1.44
+    expect(l3.maxHp).toBe(Math.round(l1.maxHp * 1.44));
     expect(potionHealFraction(1)).toBe(0.3);
     expect(potionHealFraction(2)).toBe(0.45);
+  });
+
+  it("creates chapter 2 encounters with wraith", () => {
+    const marsh = createEncounterEnemies("marsh");
+    expect(marsh.some((e) => e.typeId === "enemy-wraith")).toBe(true);
+    const tower = createEncounterEnemies("watchtower");
+    expect(tower.length).toBe(3);
   });
 });
 
@@ -328,14 +475,28 @@ describe("save migration", () => {
       sfxMuted: true,
     };
     const migrated = migrateSave(v1);
-    expect(migrated.version).toBe(2);
+    expect(migrated.version).toBe(5);
     expect(migrated.firstNodeCompleted).toBe(true);
+    expect(migrated.hollowKeepCompleted).toBe(false);
+    expect(migrated.endingSeen).toBe(false);
     expect(migrated.gold).toBe(0);
+    expect(migrated.introSeen).toBe(false);
+    expect(migrated.memoryWipes).toBe(0);
     expect(migrated.heroLevels["hero-warrior"]).toBe(1);
-    expect(migrateSave(null).version).toBe(2);
+    expect(migrateSave(null).version).toBe(5);
     expect(migrateSave(undefined).gold).toBe(0);
     expect(validateSave(migrated).ok).toBe(true);
     expect(validateSave("bad").ok).toBe(false);
+  });
+});
+
+describe("memory wipe difficulty", () => {
+  it("scales enemy stats with memory wipe count", () => {
+    resetEnemyInstanceCounter();
+    const base = createEncounterEnemies("ruins", 0)[0]!;
+    const hard = createEncounterEnemies("ruins", 2)[0]!;
+    expect(hard.maxHp).toBe(Math.round(base.maxHp * 1.3));
+    expect(hard.attack).toBe(Math.round(base.attack * 1.3));
   });
 });
 
@@ -362,9 +523,85 @@ describe("tutorial persistence", () => {
     resetTutorial();
     expect(isTutorialStepDone(resetTutorial(), "select_enemy")).toBe(false);
     const after = markTutorialStep("select_enemy");
+    // Core loop marks all three first steps together
     expect(after.tutorialSteps.select_enemy).toBe(true);
+    expect(after.tutorialSteps.swap_gems).toBe(true);
+    expect(after.tutorialSteps.color_heroes).toBe(true);
     resetTutorial();
     globalThis.localStorage = orig;
+  });
+});
+
+describe("seeded rng", () => {
+  it("mulberry32 is deterministic for the same seed", () => {
+    const a = createRng(42);
+    const b = createRng(42);
+    const seqA = [a(), a(), a(), a(), a()];
+    const seqB = [b(), b(), b(), b(), b()];
+    expect(seqA).toEqual(seqB);
+    expect(createRng(1)()).not.toBe(createRng(2)());
+  });
+
+  it("same battle seed yields identical starting boards", () => {
+    const seed = 123456;
+    const boardA = createBoard(createRng(seed));
+    const boardB = createBoard(createRng(seed));
+    expect(boardA).toEqual(boardB);
+  });
+
+  it("attemptSwap records a turn log", () => {
+    resetEnemyInstanceCounter();
+    const enemies = createFirstBattleEnemies();
+    enemies.forEach((e) => {
+      e.maxHp = 5000;
+      e.hp = 5000;
+    });
+    const ctrl = new BattleController(createParty(), enemies, craftedMatchFourBoard(), {
+      seed: 99,
+    });
+    const res = ctrl.attemptSwap(0, 0, 1, 0, () => 0.25);
+    expect(res.ok).toBe(true);
+    expect(ctrl.lastTurnLog.some((e) => e.type === "swap")).toBe(true);
+    expect(ctrl.lastTurnLog.some((e) => e.type === "resolve_step")).toBe(true);
+    expect(ctrl.lastTurnLog.some((e) => e.type === "outcome")).toBe(true);
+  });
+});
+
+describe("chapter 1 balance curve", () => {
+  it("cave encounter is a 2-enemy breather", () => {
+    resetEnemyInstanceCounter();
+    const cave = createEncounterEnemies("cave");
+    expect(cave).toHaveLength(2);
+    expect(cave.map((e) => e.name).sort()).toEqual(["Cave Slime", "Shadow Bat"].sort());
+  });
+
+  it("ruins enemies are softer than quarry armored goblin", () => {
+    resetEnemyInstanceCounter();
+    const ruins = createEncounterEnemies("ruins");
+    const quarry = createEncounterEnemies("quarry");
+    const ruinsEhp = ruins.reduce((s, e) => s + e.maxHp + e.armor, 0);
+    const quarryEhp = quarry.reduce((s, e) => s + e.maxHp + e.armor, 0);
+    expect(ruins[0]!.maxHp).toBe(150);
+    expect(quarryEhp).toBeGreaterThan(ruinsEhp);
+    expect(ENCOUNTER_REWARDS.cave.gold).toBe(120);
+    expect(ENCOUNTER_REWARDS.cave.materials).toBe(3);
+  });
+
+  it("boss and ch2 enemies have raised HP for longer fights", () => {
+    resetEnemyInstanceCounter();
+    const boss = createEncounterEnemies("fortress")[0]!;
+    expect(boss.maxHp).toBe(900);
+    const wraith = createEncounterEnemies("marsh").find((e) => e.typeId === "enemy-wraith")!;
+    expect(wraith.maxHp).toBe(320);
+  });
+});
+
+describe("tutorial encounter gating", () => {
+  it("gates candidates by encounter", () => {
+    expect(tutorialCandidatesForEncounter("ruins")).toEqual(CORE_LOOP_STEPS);
+    expect(tutorialCandidatesForEncounter("forest")).toEqual(["enemy_countdown"]);
+    expect(tutorialCandidatesForEncounter("quarry")).toEqual(["match_four"]);
+    expect(tutorialCandidatesForEncounter("cave")).toEqual(["ability_ready"]);
   });
 });
 

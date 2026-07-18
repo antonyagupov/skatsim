@@ -19,15 +19,45 @@ export const TUTORIAL_ORDER: TutorialStepId[] = [
   "visit_village",
 ];
 
+/** First three battle steps are shown as one banner on Ruins. */
+export const CORE_LOOP_STEPS: TutorialStepId[] = [
+  "select_enemy",
+  "swap_gems",
+  "color_heroes",
+];
+
+export const CORE_LOOP_COPY = "Tap enemy. Match 3+ — colors hit.";
+
 export const TUTORIAL_COPY: Record<TutorialStepId, string> = {
-  select_enemy: "Tap an enemy to select your target.",
-  swap_gems: "Swap adjacent gems to make a match of 3+.",
-  color_heroes: "Each gem color activates one hero.",
-  enemy_countdown: "Enemy numbers count down — at 0 they attack!",
-  match_four: "Match 4 gems for an Extra Move.",
-  ability_ready: "When a hero glows, tap them to use their ability.",
-  visit_village: "Spend gold and materials in the Village.",
+  select_enemy: CORE_LOOP_COPY,
+  swap_gems: CORE_LOOP_COPY,
+  color_heroes: CORE_LOOP_COPY,
+  enemy_countdown: "Numbers drop. At 0 they strike.",
+  match_four: "Armor blocks. Match 4 = Extra Move.",
+  ability_ready: "Glow = ability. Tap the hero.",
+  visit_village: "Village: spend gold before the boss.",
 };
+
+export function isCoreLoopStep(step: TutorialStepId): boolean {
+  return CORE_LOOP_STEPS.includes(step);
+}
+
+export function tutorialCandidatesForEncounter(
+  encounterId: string,
+): TutorialStepId[] {
+  switch (encounterId) {
+    case "ruins":
+      return [...CORE_LOOP_STEPS];
+    case "forest":
+      return ["enemy_countdown"];
+    case "quarry":
+      return ["match_four"];
+    case "cave":
+    case "fortress":
+    default:
+      return ["ability_ready"];
+  }
+}
 
 export function isTutorialStepDone(
   save: SaveData,
@@ -37,8 +67,22 @@ export function isTutorialStepDone(
 }
 
 export function markTutorialStep(step: TutorialStepId): SaveData {
+  if (isCoreLoopStep(step)) return markCoreLoopSteps();
   const save = loadSave();
   const tutorialSteps = { ...save.tutorialSteps, [step]: true };
+  const allDone = TUTORIAL_ORDER.every((s) => tutorialSteps[s]);
+  return updateSave({
+    tutorialSteps,
+    tutorialCompleted: allDone || save.tutorialCompleted,
+  });
+}
+
+export function markCoreLoopSteps(): SaveData {
+  const save = loadSave();
+  const tutorialSteps = { ...save.tutorialSteps };
+  for (const step of CORE_LOOP_STEPS) {
+    tutorialSteps[step] = true;
+  }
   const allDone = TUTORIAL_ORDER.every((s) => tutorialSteps[s]);
   return updateSave({
     tutorialSteps,

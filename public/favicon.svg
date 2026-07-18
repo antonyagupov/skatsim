@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" shape-rendering="crispEdges">
+  <!-- Dark JRPG tile -->
+  <rect width="32" height="32" fill="#1a1528"/>
+  <rect x="2" y="2" width="28" height="28" fill="#2a2238"/>
+  <!-- Flame gem (Skatsim match-3 identity) -->
+  <rect x="10" y="6" width="12" height="4" fill="#f0c050"/>
+  <rect x="8" y="10" width="16" height="4" fill="#e07828"/>
+  <rect x="6" y="14" width="20" height="4" fill="#d04a2e"/>
+  <rect x="8" y="18" width="16" height="4" fill="#e07828"/>
+  <rect x="10" y="22" width="12" height="4" fill="#f0c050"/>
+  <!-- Highlight -->
+  <rect x="12" y="12" width="4" height="4" fill="#ffd090"/>
+  <!-- Border -->
+  <rect x="2" y="2" width="28" height="2" fill="#3a3044"/>
+  <rect x="2" y="28" width="28" height="2" fill="#3a3044"/>
+  <rect x="2" y="2" width="2" height="28" fill="#3a3044"/>
+  <rect x="28" y="2" width="2" height="28" fill="#3a3044"/>
+</svg>

@@ -2,7 +2,7 @@ import type { SaveData } from "../data/save";
 import { rewardPreview } from "../systems/economy/rewards";
 import type { ElementId } from "../systems/combat/elements";
 
-export type MapNodeKind = "battle" | "village" | "hub";
+export type MapNodeKind = "battle" | "village" | "hub" | "ending";
 
 export type MapNodeDef = {
   id: string;
@@ -10,7 +10,7 @@ export type MapNodeDef = {
   kind: MapNodeKind;
   x: number;
   y: number;
-  sceneKey?: "Battle" | "Village";
+  sceneKey?: "Battle" | "Village" | "Ending";
   encounterId?: string;
   requires?: Array<keyof SaveData>;
   alwaysUnlocked?: boolean;
@@ -19,6 +19,8 @@ export type MapNodeDef = {
   isBoss?: boolean;
   enemyPreview?: string[];
   elementPreview?: ElementId[];
+  /** Optional objective blurb for map preview (e.g. Survive 6 turns). */
+  objectivePreview?: string;
 };
 
 /** Chapter 1 world graph — five sequential battles + Village hub. */
@@ -104,6 +106,62 @@ export const MAP_NODES: MapNodeDef[] = [
     enemyPreview: ["Goblin Chieftain"],
     elementPreview: ["green"],
   },
+  {
+    id: "marsh-crossing",
+    label: "Marsh Crossing",
+    kind: "battle",
+    x: 0.28,
+    y: 0.28,
+    sceneKey: "Battle",
+    encounterId: "marsh",
+    requires: ["chapter2Unlocked"],
+    color: 0x3a7a6a,
+    completedFlag: "marshNodeCompleted",
+    enemyPreview: ["Marsh Slime", "Wraith"],
+    elementPreview: ["green", "yellow"],
+  },
+  {
+    id: "ruined-bridge",
+    label: "Ruined Bridge",
+    kind: "battle",
+    x: 0.44,
+    y: 0.22,
+    sceneKey: "Battle",
+    encounterId: "bridge",
+    requires: ["marshNodeCompleted"],
+    color: 0x6a6a8a,
+    completedFlag: "bridgeNodeCompleted",
+    enemyPreview: ["Wraith", "Shadow Bat"],
+    elementPreview: ["yellow", "blue"],
+  },
+  {
+    id: "watchtower",
+    label: "Watchtower",
+    kind: "battle",
+    x: 0.6,
+    y: 0.18,
+    sceneKey: "Battle",
+    encounterId: "watchtower",
+    requires: ["bridgeNodeCompleted"],
+    color: 0x8a5060,
+    completedFlag: "watchtowerNodeCompleted",
+    enemyPreview: ["Wraith", "Armored Goblin"],
+    elementPreview: ["yellow", "red"],
+    objectivePreview: "Survive 6 turns",
+  },
+  {
+    id: "hollow-keep",
+    label: "Hollow Keep",
+    kind: "ending",
+    x: 0.76,
+    y: 0.14,
+    sceneKey: "Ending",
+    requires: ["watchtowerNodeCompleted"],
+    color: 0x4060a0,
+    completedFlag: "hollowKeepCompleted",
+    isBoss: true,
+    enemyPreview: ["…?"],
+  },
 ];
 
 export const MAP_EDGES: Array<[string, string]> = [
@@ -112,6 +170,10 @@ export const MAP_EDGES: Array<[string, string]> = [
   ["forest-trail", "old-quarry"],
   ["old-quarry", "dark-cave"],
   ["dark-cave", "goblin-fortress"],
+  ["village", "marsh-crossing"],
+  ["marsh-crossing", "ruined-bridge"],
+  ["ruined-bridge", "watchtower"],
+  ["watchtower", "hollow-keep"],
 ];
 
 export function isNodeUnlocked(node: MapNodeDef, save: SaveData): boolean {
@@ -134,12 +196,18 @@ export function nodeRewardPreview(node: MapNodeDef) {
 export const BATTLE_LAYOUT = {
   partySide: "left" as const,
   enemySide: "right" as const,
-  /** Party center X as fraction of width */
-  partyX: 0.14,
+  /** Party card left edge as fraction of width */
+  partyX: 0.02,
   /** Enemy center X as fraction of width */
   enemyX: 0.82,
   /** Upper battlefield fraction of height */
   fieldFraction: 0.52,
   /** Cap match-3 cell size so the board does not dominate */
-  maxGemCell: 40,
+  maxGemCell: 50,
+  /** Portrait card on the left battlefield */
+  partyPortraitSize: 78,
+  partyCardW: 152,
+  partyCardH: 92,
+  partyTop: 20,
+  partyGap: 6,
 };

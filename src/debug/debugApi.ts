@@ -14,6 +14,8 @@ import {
 import { resetTutorial, skipAllTutorials } from "../systems/tutorial/TutorialManager";
 import { spawnSpecialGemAt, createBoard } from "../systems/match3/board";
 import { SPECIAL_GEM_ID } from "../assets/types";
+import { createRng } from "../systems/rng";
+import type { TurnLogEntry } from "../systems/BattleController";
 
 export type DebugApi = {
   addGold: (amount: number) => void;
@@ -34,6 +36,9 @@ export type DebugApi = {
   resetSave: () => void;
   dumpState: () => unknown;
   validateSave: () => unknown;
+  getBattleSeed: () => number | null;
+  setBattleSeed: (seed: number) => void;
+  getLastTurnLog: () => TurnLogEntry[];
   // legacy aliases
   damageEnemy: (enemyId: string, amount: number) => void;
   healParty: () => void;
@@ -73,10 +78,19 @@ const NODE_FLAGS: Record<string, Partial<SaveData>> = {
     bossDefeated: true,
     chapter2Unlocked: true,
   },
+  "marsh-crossing": { marshNodeCompleted: true },
+  "ruined-bridge": { bridgeNodeCompleted: true },
+  watchtower: { watchtowerNodeCompleted: true },
+  "hollow-keep": { hollowKeepCompleted: true, endingSeen: true },
 };
 
 export function installDebugApi(game: Phaser.Game): void {
-  if (!import.meta.env.DEV) return;
+  const params = new URLSearchParams(window.location.search);
+  const debugFlag =
+    import.meta.env.DEV ||
+    params.get("debug") === "1" ||
+    localStorage.getItem("skatsim.debug") === "1";
+  if (!debugFlag) return;
 
   const audio = AudioManager.get();
   window.__SKATSIM_DEBUG__ = {
@@ -101,7 +115,13 @@ export function installDebugApi(game: Phaser.Game): void {
         fortressNodeCompleted: true,
         bossDefeated: true,
         chapter2Unlocked: true,
+        marshNodeCompleted: true,
+        bridgeNodeCompleted: true,
+        watchtowerNodeCompleted: true,
+        hollowKeepCompleted: true,
+        endingSeen: true,
         firstBattleCompleted: true,
+        introSeen: true,
       });
     },
     setHeroLevel: (heroId, level) => {
@@ -167,15 +187,25 @@ export function installDebugApi(game: Phaser.Game): void {
       save: loadSave(),
       battle: battleRef
         ? {
+            seed: battleRef.seed,
             state: battleRef.sm.state,
             heroes: battleRef.heroes,
             enemies: battleRef.enemies,
             selected: battleRef.selectedEnemyId,
             extraMoves: battleRef.extraMovesRemaining,
             board: battleRef.board,
+            lastTurnLog: battleRef.lastTurnLog,
           }
         : null,
     }),
+    getBattleSeed: () => battleRef?.seed ?? null,
+    setBattleSeed: (seed) => {
+      if (!battleRef) return;
+      battleRef.setSeed(seed);
+      battleRef.board = createBoard(createRng(seed));
+      sceneRef?.events.emit("debug-regen-board");
+    },
+    getLastTurnLog: () => battleRef?.lastTurnLog ?? [],
     validateSave: () => validateSave(loadSave()),
     damageEnemy: (enemyId, amount) => {
       if (!battleRef) return;
@@ -199,7 +229,9 @@ export function installDebugApi(game: Phaser.Game): void {
       }));
     },
     regenerateBoard: () => {
-      if (battleRef) battleRef.board = createBoard();
+      if (battleRef) {
+        battleRef.board = createBoard(battleRef.rng);
+      }
       sceneRef?.events.emit("debug-regen-board");
     },
     forceCascade: () => {
@@ -211,13 +243,30 @@ export function installDebugApi(game: Phaser.Game): void {
     stopAllAudio: () => audio.stopAll(),
   };
 
+  const dumpDebug = (): void => {
+    console.info(
+      "%c[Skatsim Debug]",
+      "color:#40ffc0;font-weight:bold",
+      window.__SKATSIM_DEBUG__,
+    );
+    console.info(window.__SKATSIM_DEBUG__?.dumpState());
+    console.info(
+      "Examples: __SKATSIM_DEBUG__.unlockAllNodes()  |  .addGold(500)  |  .winBattle()",
+    );
+  };
+
+  // Alt+Shift+D — Ctrl+Shift+D is stolen by Cursor/VS Code "Run and Debug"
   window.addEventListener("keydown", (ev) => {
-    if (ev.ctrlKey && ev.shiftKey && ev.key.toLowerCase() === "d") {
-      console.info("[Skatsim] Debug API:", window.__SKATSIM_DEBUG__);
-      console.info(window.__SKATSIM_DEBUG__?.dumpState());
+    if (ev.altKey && ev.shiftKey && ev.key.toLowerCase() === "d") {
+      ev.preventDefault();
+      dumpDebug();
     }
   });
 
+  console.info(
+    "%c[Skatsim] Debug API ready — Alt+Shift+D (or type __SKATSIM_DEBUG__ in console)",
+    "color:#40ffc0",
+  );
   void game;
   void SPECIAL_GEM_ID;
   void writeSave;

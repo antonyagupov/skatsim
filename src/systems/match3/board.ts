@@ -1,5 +1,12 @@
-import type { BoardGemId, GemId, SpecialGemId } from "../../assets/types";
-import { GEM_IDS, SPECIAL_GEM_ID } from "../../assets/types";
+import type { BoardGemId, GemId, LineGemId, SpecialGemId } from "../../assets/types";
+import {
+  GEM_IDS,
+  LINE_GEM_H,
+  LINE_GEM_V,
+  SPECIAL_GEM_ID,
+  isLineGemId,
+  isSpecialGemId,
+} from "../../assets/types";
 
 export const BOARD_SIZE = 7;
 export const MAX_EXTRA_MOVES_STREAK = 2;
@@ -13,6 +20,12 @@ export type MatchGroup = {
   length: number;
 };
 
+export type LineClear = {
+  axis: "h" | "v";
+  r: number;
+  c: number;
+};
+
 export type SwapResult =
   | {
       ok: true;
@@ -20,11 +33,19 @@ export type SwapResult =
       matches: MatchGroup[];
       /** Prismatic swapped onto a color — clears that color. */
       prismaticClear?: { color: GemId; prismR: number; prismC: number };
+      /** Line gem activation — clears row or column. */
+      lineClear?: LineClear;
     }
   | {
       ok: false;
       reason: "not_adjacent" | "no_match" | "out_of_bounds" | "empty";
     };
+
+export type CreatedSpecial = {
+  r: number;
+  c: number;
+  kind: "prismatic" | "line-h" | "line-v";
+};
 
 export type CascadeStep = {
   cleared: MatchGroup[];
@@ -32,9 +53,11 @@ export type CascadeStep = {
   boardAfterGravity: Board;
   boardAfterFill: Board;
   cascadeIndex: number;
-  createdSpecial?: { r: number; c: number };
+  createdSpecial?: CreatedSpecial;
   matchFourCount: number;
   matchFiveCount: number;
+  /** Extra cells cleared by line activation this step (not in match groups). */
+  lineClearedCells?: Array<{ r: number; c: number }>;
 };
 
 export type ResolveResult = {
@@ -49,14 +72,23 @@ export type ResolveResult = {
   matchFiveOccurred: boolean;
   specialGemsCreated: number;
   prismaticActivations: Array<{ color: GemId; tiles: number }>;
+  lineActivations: number;
 };
 
 export function isSpecialGem(cell: Cell): cell is SpecialGemId {
+  return cell !== null && isSpecialGemId(cell);
+}
+
+export function isLineGem(cell: Cell): cell is LineGemId {
+  return cell !== null && isLineGemId(cell);
+}
+
+export function isPrismaticGem(cell: Cell): boolean {
   return cell === SPECIAL_GEM_ID;
 }
 
 export function isColorGem(cell: Cell): cell is GemId {
-  return cell !== null && cell !== SPECIAL_GEM_ID;
+  return cell !== null && !isSpecialGemId(cell);
 }
 
 export function createEmptyBoard(): Board {
@@ -248,8 +280,27 @@ export function trySwap(
   const b = board[r2]![c2];
   if (!a || !b) return { ok: false, reason: "empty" };
 
+  // Line gem + anything adjacent → activate line at destination
+  if (isLineGem(a) || isLineGem(b)) {
+    const swapped = swapCells(board, r1, c1, r2, c2);
+    const lineAt =
+      isLineGem(swapped[r1]![c1])
+        ? { r: r1, c: c1, gem: swapped[r1]![c1]! as LineGemId }
+        : { r: r2, c: c2, gem: swapped[r2]![c2]! as LineGemId };
+    return {
+      ok: true,
+      board: swapped,
+      matches: [],
+      lineClear: {
+        axis: lineAt.gem === LINE_GEM_H ? "h" : "v",
+        r: lineAt.r,
+        c: lineAt.c,
+      },
+    };
+  }
+
   // Prismatic + color → clear that color
-  if (isSpecialGem(a) && isColorGem(b)) {
+  if (isPrismaticGem(a) && isColorGem(b)) {
     return {
       ok: true,
       board: swapCells(board, r1, c1, r2, c2),
@@ -257,7 +308,7 @@ export function trySwap(
       prismaticClear: { color: b, prismR: r2, prismC: c2 },
     };
   }
-  if (isSpecialGem(b) && isColorGem(a)) {
+  if (isPrismaticGem(b) && isColorGem(a)) {
     return {
       ok: true,
       board: swapCells(board, r1, c1, r2, c2),
@@ -265,13 +316,49 @@ export function trySwap(
       prismaticClear: { color: a, prismR: r1, prismC: c1 },
     };
   }
-  // Two prismatics or prismatic+prismatic — treat as invalid unless matches
+  // Two prismatics — treat as invalid unless matches
   const swapped = swapCells(board, r1, c1, r2, c2);
   const matches = findMatches(swapped);
   if (matches.length === 0) {
     return { ok: false, reason: "no_match" };
   }
   return { ok: true, board: swapped, matches };
+}
+
+export function clearLine(
+  board: Board,
+  clear: LineClear,
+): {
+  board: Board;
+  tilesByColor: Record<GemId, number>;
+  cells: Array<{ r: number; c: number }>;
+} {
+  const next = cloneBoard(board);
+  const tilesByColor = Object.fromEntries(GEM_IDS.map((g) => [g, 0])) as Record<
+    GemId,
+    number
+  >;
+  const cells: Array<{ r: number; c: number }> = [];
+  if (clear.axis === "h") {
+    for (let c = 0; c < BOARD_SIZE; c++) {
+      const gem = next[clear.r]![c];
+      if (isColorGem(gem)) tilesByColor[gem] += 1;
+      if (gem) {
+        cells.push({ r: clear.r, c });
+        next[clear.r]![c] = null;
+      }
+    }
+  } else {
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      const gem = next[r]![clear.c];
+      if (isColorGem(gem)) tilesByColor[gem] += 1;
+      if (gem) {
+        cells.push({ r, c: clear.c });
+        next[r]![clear.c] = null;
+      }
+    }
+  }
+  return { board: next, tilesByColor, cells };
 }
 
 export function clearMatches(board: Board, matches: MatchGroup[]): Board {
@@ -371,6 +458,11 @@ function longestInMatches(matches: MatchGroup[]): number {
   return max;
 }
 
+function matchAxis(m: MatchGroup): "h" | "v" {
+  if (m.cells.length < 2) return "h";
+  return m.cells.every((c) => c.r === m.cells[0]!.r) ? "h" : "v";
+}
+
 function pickSpecialSpawnCell(matches: MatchGroup[]): { r: number; c: number } | null {
   const five = matches.filter((m) => m.length >= 5);
   if (!five.length) return null;
@@ -379,14 +471,65 @@ function pickSpecialSpawnCell(matches: MatchGroup[]): { r: number; c: number } |
   return mid;
 }
 
+function pickLineSpawn(matches: MatchGroup[]): CreatedSpecial | null {
+  const four = matches
+    .filter((m) => m.length >= 4 && m.length < 5)
+    .sort((a, b) => b.length - a.length)[0];
+  if (!four) return null;
+  const mid = four.cells[Math.floor(four.cells.length / 2)]!;
+  const axis = matchAxis(four);
+  return {
+    r: mid.r,
+    c: mid.c,
+    kind: axis === "h" ? "line-h" : "line-v",
+  };
+}
+
+function addColorTotals(
+  totals: Record<GemId, number>,
+  weighted: Record<GemId, number>,
+  byColor: Record<GemId, number>,
+  mult: number,
+): void {
+  for (const g of GEM_IDS) {
+    totals[g] += byColor[g]!;
+    weighted[g] += byColor[g]! * mult;
+  }
+}
+
+function pushGravityFillStep(
+  steps: CascadeStep[],
+  boardAfterClear: Board,
+  cascadeIndex: number,
+  rng: () => number,
+  extras: Partial<CascadeStep>,
+): Board {
+  const boardAfterGravity = applyGravity(boardAfterClear);
+  const boardAfterFill = refillBoard(boardAfterGravity, rng);
+  steps.push({
+    cleared: extras.cleared ?? [],
+    boardAfterClear,
+    boardAfterGravity,
+    boardAfterFill,
+    cascadeIndex,
+    createdSpecial: extras.createdSpecial,
+    matchFourCount: extras.matchFourCount ?? 0,
+    matchFiveCount: extras.matchFiveCount ?? 0,
+    lineClearedCells: extras.lineClearedCells,
+  });
+  return boardAfterFill;
+}
+
 /**
  * Resolve board after a successful swap.
  * @param initialPrismatic optional color clear from prismatic activation before cascades
+ * @param initialLine optional row/col clear from line gem activation
  */
 export function resolveBoard(
   boardAfterSwap: Board,
   rng: () => number = Math.random,
   initialPrismatic?: { color: GemId; prismR: number; prismC: number },
+  initialLine?: LineClear,
 ): ResolveResult {
   let board = cloneBoard(boardAfterSwap);
   const steps: CascadeStep[] = [];
@@ -404,9 +547,22 @@ export function resolveBoard(
   let matchFourOccurred = false;
   let matchFiveOccurred = false;
   let specialGemsCreated = 0;
+  let lineActivations = 0;
   const prismaticActivations: Array<{ color: GemId; tiles: number }> = [];
 
-  if (initialPrismatic) {
+  if (initialLine) {
+    lineActivations += 1;
+    const cleared = clearLine(board, initialLine);
+    board = cleared.board;
+    addColorTotals(totals, weighted, cleared.tilesByColor, 1);
+    const totalTiles = Object.values(cleared.tilesByColor).reduce((a, b) => a + b, 0);
+    longestMatch = Math.max(longestMatch, totalTiles);
+    board = pushGravityFillStep(steps, board, 0, rng, {
+      cleared: [],
+      lineClearedCells: cleared.cells,
+    });
+    cascadeIndex = 1;
+  } else if (initialPrismatic) {
     const cleared = clearColor(board, initialPrismatic.color, {
       r: initialPrismatic.prismR,
       c: initialPrismatic.prismC,
@@ -419,9 +575,7 @@ export function resolveBoard(
       tiles: cleared.tiles,
     });
     longestMatch = Math.max(longestMatch, cleared.tiles);
-    const boardAfterGravity = applyGravity(board);
-    const boardAfterFill = refillBoard(boardAfterGravity, rng);
-    steps.push({
+    board = pushGravityFillStep(steps, board, 0, rng, {
       cleared: [
         {
           gem: initialPrismatic.color,
@@ -429,21 +583,16 @@ export function resolveBoard(
           length: cleared.tiles,
         },
       ],
-      boardAfterClear: board,
-      boardAfterGravity,
-      boardAfterFill,
-      cascadeIndex: 0,
-      matchFourCount: 0,
-      matchFiveCount: 0,
     });
-    board = boardAfterFill;
     cascadeIndex = 1;
   }
 
   while (cascadeIndex < 40) {
     const matches = findMatches(board);
     if (matches.length === 0) break;
-    const mult = cascadeMultiplier(cascadeIndex === 0 && !initialPrismatic ? 0 : cascadeIndex);
+    const mult = cascadeMultiplier(
+      cascadeIndex === 0 && !initialPrismatic && !initialLine ? 0 : cascadeIndex,
+    );
     peak = Math.max(peak, mult);
     const raw = countCleared(matches);
     for (const g of GEM_IDS) {
@@ -458,29 +607,30 @@ export function resolveBoard(
     if (matchFiveCount > 0) matchFiveOccurred = true;
 
     let boardAfterClear = clearMatches(board, matches);
-    let createdSpecial: { r: number; c: number } | undefined;
+    let createdSpecial: CreatedSpecial | undefined;
     if (matchFiveCount > 0) {
       const spawn = pickSpecialSpawnCell(matches);
       if (spawn) {
         boardAfterClear[spawn.r]![spawn.c] = SPECIAL_GEM_ID;
+        createdSpecial = { ...spawn, kind: "prismatic" };
+        specialGemsCreated += 1;
+      }
+    } else if (matchFourCount > 0) {
+      const spawn = pickLineSpawn(matches);
+      if (spawn) {
+        boardAfterClear[spawn.r]![spawn.c] =
+          spawn.kind === "line-h" ? LINE_GEM_H : LINE_GEM_V;
         createdSpecial = spawn;
         specialGemsCreated += 1;
       }
     }
 
-    const boardAfterGravity = applyGravity(boardAfterClear);
-    const boardAfterFill = refillBoard(boardAfterGravity, rng);
-    steps.push({
+    board = pushGravityFillStep(steps, boardAfterClear, cascadeIndex, rng, {
       cleared: matches,
-      boardAfterClear,
-      boardAfterGravity,
-      boardAfterFill,
-      cascadeIndex,
       createdSpecial,
       matchFourCount,
       matchFiveCount,
     });
-    board = boardAfterFill;
     cascadeIndex++;
   }
 
@@ -500,6 +650,7 @@ export function resolveBoard(
     matchFiveOccurred,
     specialGemsCreated,
     prismaticActivations,
+    lineActivations,
   };
 }
 
@@ -507,8 +658,16 @@ export function spawnSpecialGemAt(
   board: Board,
   r: number,
   c: number,
+  kind: "prismatic" | "line-h" | "line-v" = "prismatic",
 ): Board {
   const next = cloneBoard(board);
-  if (inBounds(r, c)) next[r]![c] = SPECIAL_GEM_ID;
+  if (inBounds(r, c)) {
+    next[r]![c] =
+      kind === "prismatic"
+        ? SPECIAL_GEM_ID
+        : kind === "line-h"
+          ? LINE_GEM_H
+          : LINE_GEM_V;
+  }
   return next;
 }

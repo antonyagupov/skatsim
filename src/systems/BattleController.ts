@@ -9,7 +9,12 @@ import {
   trySwap,
 } from "./match3/board";
 import type { EnemyRuntime } from "./combat/enemies";
-import { spawnBatAlly } from "./combat/enemies";
+import {
+  applyStatus,
+  previewEnemyPattern,
+  spawnBatAlly,
+  tickStatuses,
+} from "./combat/enemies";
 import type { HeroRuntime } from "./combat/heroes";
 import { HERO_DEFS, heroForGem } from "./combat/heroes";
 import {
@@ -35,6 +40,37 @@ import {
   selectDefaultEnemy,
 } from "./combat/targeting";
 import { BattleStateMachine } from "./combat/stateMachine";
+import { createRng, randomSeed } from "./rng";
+
+export type TurnLogEntry =
+  | { type: "swap"; r1: number; c1: number; r2: number; c2: number }
+  | {
+      type: "resolve_step";
+      cascadeIndex: number;
+      matchLengths: number[];
+    }
+  | {
+      type: "hero_attack";
+      heroId: HeroId;
+      gem?: GemId;
+      damage: number;
+      targetIds: string[];
+      ability?: boolean;
+    }
+  | {
+      type: "enemy_tick";
+      enemyId: string;
+      countdown: number;
+    }
+  | {
+      type: "enemy_attack";
+      enemyId: string;
+      heroId: HeroId;
+      damage: number;
+    }
+  | { type: "extra_move" }
+  | { type: "shuffle" }
+  | { type: "outcome"; outcome: "ongoing" | "victory" | "defeat" };
 
 export type AttackEvent =
   | {
@@ -81,7 +117,20 @@ export type AttackEvent =
       kind: "countdown_tick";
       enemyId: string;
       countdown: number;
+    }
+  | {
+      kind: "status_burn";
+      enemyId: string;
+      damage: number;
+    }
+  | {
+      kind: "status_freeze_block";
+      enemyId: string;
     };
+
+export type BattleObjective =
+  | { type: "eliminate" }
+  | { type: "survive"; turns: number };
 
 export type TurnResolution = {
   resolve: ResolveResult;
@@ -112,12 +161,23 @@ export class BattleController {
   potionAvailable = true;
   potionHealFraction = 0.3;
   isBossBattle = false;
+  seed: number;
+  rng: () => number;
+  lastTurnLog: TurnLogEntry[] = [];
+  objective: BattleObjective = { type: "eliminate" };
+  /** Player turns that ticked enemy phase (for survive objectives). */
+  surviveTurnsElapsed = 0;
 
   constructor(
     heroes: HeroRuntime[],
     enemies: EnemyRuntime[],
     board: Board,
-    opts?: { potionHealFraction?: number },
+    opts?: {
+      potionHealFraction?: number;
+      seed?: number;
+      rng?: () => number;
+      objective?: BattleObjective;
+    },
   ) {
     this.heroes = heroes;
     this.enemies = enemies;
@@ -125,9 +185,31 @@ export class BattleController {
     this.selectedEnemyId = selectDefaultEnemy(enemies, null);
     this.potionHealFraction = opts?.potionHealFraction ?? 0.3;
     this.isBossBattle = enemies.some((e) => e.isBoss);
+    this.seed = opts?.seed ?? randomSeed();
+    this.rng = opts?.rng ?? createRng(this.seed);
+    this.objective = opts?.objective ?? { type: "eliminate" };
     if (!hasLegalMove(this.board)) {
-      this.board = shuffleBoard(this.board);
+      this.board = shuffleBoard(this.board, this.rng);
     }
+  }
+
+  previewPattern(enemyId: string): string {
+    const e = this.enemies.find((x) => x.id === enemyId);
+    if (!e || !e.alive) return "single";
+    const p = previewEnemyPattern(e);
+    if (p === "war_cry") return "W";
+    if (p === "cleaver") return "C";
+    return "!";
+  }
+
+  get surviveTurnsRemaining(): number | null {
+    if (this.objective.type !== "survive") return null;
+    return Math.max(0, this.objective.turns - this.surviveTurnsElapsed);
+  }
+
+  setSeed(seed: number): void {
+    this.seed = seed >>> 0;
+    this.rng = createRng(this.seed);
   }
 
   get acceptsInput(): boolean {
@@ -239,6 +321,7 @@ export class BattleController {
           dmgShown = dmg;
           const res = applyDamageToEnemy(t, dmg);
           e = e.map((en) => (en.id === t.id ? res.enemy : en));
+          e = this.applyElementStatus(e, t.id, gem, res.dealt);
           damage += res.dealt;
           targetIds.push(t.id);
           attacks.push({
@@ -274,6 +357,7 @@ export class BattleController {
           );
           const res = applyDamageToEnemy(t, dmg);
           e = e.map((en) => (en.id === t.id ? res.enemy : en));
+          e = this.applyElementStatus(e, t.id, gem, res.dealt);
           damage += res.dealt;
           attacks.push({
             kind: "hero_match_attack",
@@ -300,6 +384,7 @@ export class BattleController {
         );
         const res = applyDamageToEnemy(target, dmg);
         e = e.map((en) => (en.id === target.id ? res.enemy : en));
+        e = this.applyElementStatus(e, target.id, gem, res.dealt);
         damage += res.dealt;
         attacks.push({
           kind: "hero_match_attack",
@@ -315,6 +400,46 @@ export class BattleController {
     return { heroes: h, enemies: e, selected: selectDefaultEnemy(e, sel), damage };
   }
 
+  private applyElementStatus(
+    enemies: EnemyRuntime[],
+    targetId: string,
+    gem: GemId,
+    dealt: number,
+  ): EnemyRuntime[] {
+    if (gem === "gem-flame" && dealt > 0) {
+      return enemies.map((en) =>
+        en.id === targetId
+          ? applyStatus(en, {
+              id: "burn",
+              turns: 2,
+              potency: Math.max(1, Math.round(dealt * 0.1)),
+            })
+          : en,
+      );
+    }
+    if (gem === "gem-ice" && dealt > 0) {
+      return enemies.map((en) =>
+        en.id === targetId
+          ? applyStatus(en, { id: "freeze", turns: 1 })
+          : en,
+      );
+    }
+    return enemies;
+  }
+
+  private checkVictory(
+    heroes: HeroRuntime[],
+    enemies: EnemyRuntime[],
+  ): "victory" | "defeat" | "ongoing" {
+    if (allHeroesDead(heroes)) return "defeat";
+    if (this.objective.type === "survive") {
+      if (this.surviveTurnsElapsed >= this.objective.turns) return "victory";
+      return "ongoing";
+    }
+    if (allEnemiesDead(enemies)) return "victory";
+    return "ongoing";
+  }
+
   private runEnemyPhase(
     heroes: HeroRuntime[],
     enemies: EnemyRuntime[],
@@ -322,7 +447,27 @@ export class BattleController {
     rng: () => number,
   ): { heroes: HeroRuntime[]; enemies: EnemyRuntime[] } {
     let h = heroes;
-    let e = enemies.map((en) => ({ ...en }));
+    let e = enemies.map((en) => ({ ...en, statuses: [...en.statuses] }));
+
+    // Status ticks (burn DoT); remember freeze blocks before turns expire
+    const freezeBlocked = new Set<string>();
+    for (let i = 0; i < e.length; i++) {
+      const enemy = e[i]!;
+      if (!enemy.alive) continue;
+      const ticked = tickStatuses(enemy);
+      e[i] = ticked.enemy;
+      if (ticked.freezeBlocksAttack) freezeBlocked.add(enemy.id);
+      if (ticked.burnDamage > 0) {
+        const res = applyDamageToEnemy(e[i]!, ticked.burnDamage);
+        e[i] = { ...res.enemy, statuses: e[i]!.statuses };
+        this.totalDamageDealt += res.dealt;
+        attacks.push({
+          kind: "status_burn",
+          enemyId: enemy.id,
+          damage: res.dealt,
+        });
+      }
+    }
 
     // Tick countdowns
     for (let i = 0; i < e.length; i++) {
@@ -341,6 +486,15 @@ export class BattleController {
     for (let i = 0; i < e.length; i++) {
       const enemy = e[i]!;
       if (!enemy.alive || enemy.countdown > 0) continue;
+
+      if (freezeBlocked.has(enemy.id)) {
+        e[i] = {
+          ...enemy,
+          countdown: enemy.countdownMax,
+        };
+        attacks.push({ kind: "status_freeze_block", enemyId: enemy.id });
+        continue;
+      }
 
       const pattern = this.pickBossPattern(enemy);
       const bonus = enemy.nextAttackBonus;
@@ -428,7 +582,7 @@ export class BattleController {
     c1: number,
     r2: number,
     c2: number,
-    rng: () => number = Math.random,
+    rng: () => number = this.rng,
   ):
     | { ok: false; reason: string }
     | { ok: true; turn: TurnResolution } {
@@ -440,6 +594,7 @@ export class BattleController {
 
     this.resolving = true;
     this.sm.set("MATCH_RESOLUTION");
+    const log: TurnLogEntry[] = [{ type: "swap", r1, c1, r2, c2 }];
 
     const usingExtra = this.extraMovesRemaining > 0;
     if (usingExtra) {
@@ -450,9 +605,18 @@ export class BattleController {
       swap.board,
       rng,
       swap.prismaticClear,
+      swap.lineClear,
     );
     this.board = resolved.finalBoard;
     this.lastCascadePeak = resolved.cascadeMultiplierPeak;
+
+    for (const step of resolved.steps) {
+      log.push({
+        type: "resolve_step",
+        cascadeIndex: step.cascadeIndex,
+        matchLengths: step.cleared.map((g) => g.length),
+      });
+    }
 
     let heroes = this.heroes.map((h) => ({ ...h }));
     let enemies = this.enemies.map((e) => ({ ...e }));
@@ -465,6 +629,7 @@ export class BattleController {
       this.board = shuffleBoard(this.board, rng);
       shuffled = true;
       attacks.push({ kind: "board_shuffle" });
+      log.push({ type: "shuffle" });
     }
 
     this.sm.set("HERO_ATTACKS");
@@ -488,6 +653,7 @@ export class BattleController {
       this.extraMoveStreak += 1;
       extraMoveGranted = true;
       attacks.push({ kind: "extra_move" });
+      log.push({ type: "extra_move" });
     } else if (!resolved.matchFourOccurred && !usingExtra) {
       this.extraMoveStreak = 0;
     }
@@ -495,9 +661,13 @@ export class BattleController {
     /** Normal turns tick countdowns; extra actions do not. */
     const countsEnemyTurn = !usingExtra;
 
-    if (allEnemiesDead(enemies)) {
+    const earlyOutcome = this.checkVictory(heroes, enemies);
+    if (earlyOutcome === "victory") {
       this.commit(heroes, enemies, selected);
       this.sm.set("VICTORY");
+      this.appendAttackLog(log, attacks);
+      log.push({ type: "outcome", outcome: "victory" });
+      this.lastTurnLog = log;
       return {
         ok: true,
         turn: this.packTurn(
@@ -516,12 +686,17 @@ export class BattleController {
       const phase = this.runEnemyPhase(heroes, enemies, attacks, rng);
       heroes = phase.heroes;
       enemies = phase.enemies;
+      this.surviveTurnsElapsed += 1;
     }
 
     this.commit(heroes, enemies, selected);
 
-    if (allHeroesDead(heroes)) {
+    const outcome = this.checkVictory(heroes, enemies);
+    if (outcome === "defeat") {
       this.sm.set("DEFEAT");
+      this.appendAttackLog(log, attacks);
+      log.push({ type: "outcome", outcome: "defeat" });
+      this.lastTurnLog = log;
       return {
         ok: true,
         turn: this.packTurn(
@@ -534,8 +709,28 @@ export class BattleController {
         ),
       };
     }
+    if (outcome === "victory") {
+      this.sm.set("VICTORY");
+      this.appendAttackLog(log, attacks);
+      log.push({ type: "outcome", outcome: "victory" });
+      this.lastTurnLog = log;
+      return {
+        ok: true,
+        turn: this.packTurn(
+          resolved,
+          attacks,
+          "victory",
+          extraMoveGranted,
+          countsEnemyTurn,
+          shuffled,
+        ),
+      };
+    }
 
     this.sm.set("PLAYER_INPUT");
+    this.appendAttackLog(log, attacks);
+    log.push({ type: "outcome", outcome: "ongoing" });
+    this.lastTurnLog = log;
     return {
       ok: true,
       turn: this.packTurn(
@@ -547,6 +742,41 @@ export class BattleController {
         shuffled,
       ),
     };
+  }
+
+  private appendAttackLog(log: TurnLogEntry[], attacks: AttackEvent[]): void {
+    for (const ev of attacks) {
+      if (ev.kind === "hero_match_attack") {
+        log.push({
+          type: "hero_attack",
+          heroId: ev.heroId,
+          gem: ev.gem,
+          damage: ev.damage,
+          targetIds: ev.targetIds,
+        });
+      } else if (ev.kind === "hero_ability") {
+        log.push({
+          type: "hero_attack",
+          heroId: ev.heroId,
+          damage: ev.damage,
+          targetIds: ev.targetIds,
+          ability: true,
+        });
+      } else if (ev.kind === "countdown_tick") {
+        log.push({
+          type: "enemy_tick",
+          enemyId: ev.enemyId,
+          countdown: ev.countdown,
+        });
+      } else if (ev.kind === "enemy_attack") {
+        log.push({
+          type: "enemy_attack",
+          enemyId: ev.enemyId,
+          heroId: ev.heroId,
+          damage: ev.damage,
+        });
+      }
+    }
   }
 
   private commit(
@@ -584,7 +814,7 @@ export class BattleController {
 
   useAbility(
     heroId: HeroId,
-    rng: () => number = Math.random,
+    rng: () => number = this.rng,
   ): {
     ok: boolean;
     attacks: AttackEvent[];
@@ -604,6 +834,7 @@ export class BattleController {
     this.sm.set("ABILITY_RESOLUTION");
     heroes = heroes.map((h) => (h.id === heroId ? spendAbility(h) : h));
     const attacks: AttackEvent[] = [];
+    const log: TurnLogEntry[] = [];
     const base = hero.baseDamage * 3;
 
     if (heroId === "hero-warrior") {
@@ -618,6 +849,7 @@ export class BattleController {
         );
         const res = applyDamageToEnemy(target, dmg);
         enemies = enemies.map((e) => (e.id === tid ? res.enemy : e));
+        enemies = this.applyElementStatus(enemies, tid!, gem, res.dealt);
         this.totalDamageDealt += res.dealt;
         attacks.push({
           kind: "hero_ability",
@@ -636,6 +868,7 @@ export class BattleController {
         );
         const res = applyDamageToEnemy(t, dmg);
         enemies = enemies.map((e) => (e.id === t.id ? res.enemy : e));
+        enemies = this.applyElementStatus(enemies, t.id, "gem-ice", res.dealt);
         this.totalDamageDealt += res.dealt;
         attacks.push({
           kind: "hero_ability",
@@ -679,9 +912,13 @@ export class BattleController {
 
     this.selectedEnemyId = selectDefaultEnemy(enemies, this.selectedEnemyId);
 
-    if (allEnemiesDead(enemies)) {
+    const earlyOutcome = this.checkVictory(heroes, enemies);
+    if (earlyOutcome === "victory") {
       this.commit(heroes, enemies, this.selectedEnemyId);
       this.sm.set("VICTORY");
+      this.appendAttackLog(log, attacks);
+      log.push({ type: "outcome", outcome: "victory" });
+      this.lastTurnLog = log;
       return { ok: true, attacks, outcome: "victory" };
     }
 
@@ -691,16 +928,31 @@ export class BattleController {
       const phase = this.runEnemyPhase(heroes, enemies, attacks, rng);
       heroes = phase.heroes;
       enemies = phase.enemies;
+      this.surviveTurnsElapsed += 1;
     }
 
     this.commit(heroes, enemies, this.selectedEnemyId);
 
-    if (allHeroesDead(heroes)) {
+    const outcome = this.checkVictory(heroes, enemies);
+    if (outcome === "defeat") {
       this.sm.set("DEFEAT");
+      this.appendAttackLog(log, attacks);
+      log.push({ type: "outcome", outcome: "defeat" });
+      this.lastTurnLog = log;
       return { ok: true, attacks, outcome: "defeat" };
+    }
+    if (outcome === "victory") {
+      this.sm.set("VICTORY");
+      this.appendAttackLog(log, attacks);
+      log.push({ type: "outcome", outcome: "victory" });
+      this.lastTurnLog = log;
+      return { ok: true, attacks, outcome: "victory" };
     }
 
     this.sm.set("PLAYER_INPUT");
+    this.appendAttackLog(log, attacks);
+    log.push({ type: "outcome", outcome: "ongoing" });
+    this.lastTurnLog = log;
     return { ok: true, attacks, outcome: "ongoing" };
   }
 

@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "deploy": "npm run build && npx --yes gh-pages -d dist -b gh-pages -m \"Deploy site\"",
     "test": "vitest run",
     "test:watch": "vitest",
     "generate:placeholders": "node scripts/procedural-placeholders.mjs",

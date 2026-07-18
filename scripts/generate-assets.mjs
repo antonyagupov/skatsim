@@ -215,7 +215,7 @@ async function main() {
   const onlyIds = parseOnlyIds();
   const specs = onlyIds
     ? ASSET_SPECS.filter((s) => onlyIds.has(s.id))
-    : ASSET_SPECS;
+    : ASSET_SPECS.filter((s) => !s.skipByDefault);
 
   if (onlyIds && specs.length === 0) {
     console.error("No matching assets for --only filter.");

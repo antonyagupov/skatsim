@@ -110,17 +110,21 @@ export class WorldScene extends Phaser.Scene {
 
       if (node.isBoss && !locked) {
         this.add
-          .text(nx, ny - radius - 14, "BOSS", {
+          .text(nx, ny - radius - 14, node.kind === "ending" ? "END" : "BOSS", {
             fontFamily: "monospace",
             fontSize: "11px",
-            color: "#ff8080",
+            color: node.kind === "ending" ? "#80c0ff" : "#ff8080",
           })
           .setOrigin(0.5);
       }
 
       const status = completed ? "✓" : locked ? "·" : "►";
+      const label = `${status} ${node.label}`;
       this.add
-        .text(nx, ny + radius + 14, `${status} ${node.label}`, {
+        .rectangle(nx, ny + radius + 14, Math.min(160, 12 + label.length * 7.2), 18, 0x0c0a12, 0.62)
+        .setStrokeStyle(1, 0x3a3044, 0.5);
+      this.add
+        .text(nx, ny + radius + 14, label, {
           fontFamily: "monospace",
           fontSize: "12px",
           color: locked ? "#887868" : "#f2e9d8",
@@ -128,14 +132,14 @@ export class WorldScene extends Phaser.Scene {
         .setOrigin(0.5);
 
       // Compact preview under label
-      if (!locked && node.kind === "battle") {
+      if (!locked && (node.kind === "battle" || node.kind === "ending")) {
         const reward = nodeRewardPreview(node);
-        const elems = (node.elementPreview ?? [])
-          .map((el) => elementColor(el).toString(16))
-          .join("");
-        void elems;
         const preview = [
-          (node.enemyPreview ?? []).slice(0, 2).join(", "),
+          node.objectivePreview
+            ? node.objectivePreview
+            : node.kind === "ending"
+              ? "The final hall…"
+              : (node.enemyPreview ?? []).slice(0, 2).join(", "),
           reward ? `${reward.gold}G ${reward.materials}M` : "",
         ]
           .filter(Boolean)
@@ -144,7 +148,7 @@ export class WorldScene extends Phaser.Scene {
           .text(nx, ny + radius + 30, preview, {
             fontFamily: "monospace",
             fontSize: "10px",
-            color: "#a89888",
+            color: node.kind === "ending" ? "#90b0d8" : "#a89888",
           })
           .setOrigin(0.5);
 
@@ -178,6 +182,8 @@ export class WorldScene extends Phaser.Scene {
               encounterId: node.encounterId ?? "ruins",
               nodeId: node.id,
             });
+          } else if (node.sceneKey === "Ending") {
+            this.scene.start("Ending");
           } else if (node.sceneKey === "Village") {
             this.scene.start("Village");
           }

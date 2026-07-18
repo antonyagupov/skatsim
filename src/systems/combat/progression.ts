@@ -3,10 +3,10 @@ import { HERO_DEFS, type HeroDef } from "./heroes";
 
 export const MAX_HERO_LEVEL = 3;
 
-/** Transparent level scaling: +12% HP / damage / ability strength per level above 1. */
+/** Transparent level scaling: +22% HP / damage / ability strength per level above 1. */
 export function heroLevelMultiplier(level: number): number {
   const lv = Math.max(1, Math.min(MAX_HERO_LEVEL, level));
-  return 1 + (lv - 1) * 0.12;
+  return 1 + (lv - 1) * 0.22;
 }
 
 export function scaledHeroStats(

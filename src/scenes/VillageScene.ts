@@ -15,7 +15,7 @@ import {
   scaledHeroStats,
   type BuildingId,
 } from "../systems/combat/progression";
-import { markTutorialStep } from "../systems/tutorial/TutorialManager";
+import { markTutorialStep, nextPendingStep, TUTORIAL_COPY } from "../systems/tutorial/TutorialManager";
 import { addAudioControls } from "../ui/AudioControls";
 
 export class VillageScene extends Phaser.Scene {
@@ -30,7 +30,15 @@ export class VillageScene extends Phaser.Scene {
   create(): void {
     const audio = AudioManager.get();
     void audio.unlock().then(() => audio.playTrack("village"));
-    markTutorialStep("visit_village");
+    const save = loadSave();
+    // Village tutorial only after Forest — don't auto-complete on early visits.
+    if (save.forestNodeCompleted) {
+      const pending = nextPendingStep(save, ["visit_village"]);
+      if (pending === "visit_village") {
+        markTutorialStep("visit_village");
+        this.showVillageTutorial();
+      }
+    }
 
     const { width, height } = this.scale;
     if (this.textures.exists("env-village")) {
@@ -147,12 +155,13 @@ export class VillageScene extends Phaser.Scene {
 
       this.panel.add(
         this.add
-          .text(x, y - 68, `${fac.name}`, {
+          .text(x, y - 48, `${fac.name}`, {
             fontFamily: "monospace",
-            fontSize: "13px",
+            fontSize: "12px",
             color: "#f2e9d8",
           })
-          .setOrigin(0.5),
+          .setOrigin(0.5)
+          .setShadow(1, 1, "#0a0810", 2, false, true),
       );
       this.panel.add(
         this.add
@@ -188,10 +197,14 @@ export class VillageScene extends Phaser.Scene {
     const save = loadSave();
     const { width, height } = this.scale;
     const overlay = this.add.container(0, 0);
-    overlay.add(this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.55));
+    const backdrop = this.add
+      .rectangle(width / 2, height / 2, width, height, 0x000000, 0.55)
+      .setInteractive();
+    overlay.add(backdrop);
     const box = this.add
       .rectangle(width / 2, height / 2, 420, 360, 0x1a1520)
-      .setStrokeStyle(2, 0xf0c050);
+      .setStrokeStyle(2, 0xf0c050)
+      .setInteractive();
     overlay.add(box);
 
     const fac = FACILITIES.find((f) => f.id === id)!;
@@ -238,6 +251,12 @@ export class VillageScene extends Phaser.Scene {
       overlay.destroy(true);
       this.refresh();
     };
+
+    backdrop.on("pointerdown", close);
+    // Clicks on the panel itself should not close the modal.
+    box.on("pointerdown", (_pointer: Phaser.Input.Pointer, _lx: number, _ly: number, event: Phaser.Types.Input.EventData) => {
+      event.stopPropagation();
+    });
 
     const closeBtn = this.add
       .text(width / 2 + 180, height / 2 - 155, "✕", {
@@ -391,5 +410,28 @@ export class VillageScene extends Phaser.Scene {
           .setOrigin(0.5),
       );
     }
+  }
+
+  private showVillageTutorial(): void {
+    const { width } = this.scale;
+    const banner = this.add.container(width / 2, 72);
+    const bg = this.add
+      .rectangle(0, 0, Math.min(width - 24, 400), 44, 0x1a1528, 0.94)
+      .setStrokeStyle(1, 0x3a3044);
+    const label = this.add
+      .text(0, 0, TUTORIAL_COPY.visit_village, {
+        fontFamily: "monospace",
+        fontSize: "12px",
+        color: "#f2e9d8",
+      })
+      .setOrigin(0.5);
+    banner.add([bg, label]);
+    this.tweens.add({
+      targets: banner,
+      alpha: 0,
+      delay: 2800,
+      duration: 400,
+      onComplete: () => banner.destroy(),
+    });
   }
 }

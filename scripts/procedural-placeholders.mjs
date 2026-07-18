@@ -229,6 +229,8 @@ function paintAsset(spec) {
     fillRect(rgba, w, 0, 0, w, h, 30, 30, 40);
   }
   if (id === "battle-screen-ref") drawBattleRef(rgba, w, h);
+  else if (id === "splash-bg" || id === "splash-match3" || id === "ending-party") drawBattleRef(rgba, w, h);
+  else if (id === "env-hollow-keep") drawBossArena(rgba, w, h);
   else if (id === "battle-boss-bg") drawBossArena(rgba, w, h);
   else if (id.startsWith("hero-")) {
     const map = {
@@ -238,8 +240,9 @@ function paintAsset(spec) {
       "hero-priest": [220, 180, 50],
     };
     drawHero(rgba, w, h, map[id] || accent(id));
-  } else if (id === "enemy-slime") drawEnemy(rgba, w, h, [70, 190, 150], "slime");
+  }   else if (id === "enemy-slime") drawEnemy(rgba, w, h, [70, 190, 150], "slime");
   else if (id === "enemy-bat") drawEnemy(rgba, w, h, [140, 70, 160], "bat");
+  else if (id === "enemy-wraith") drawEnemy(rgba, w, h, [220, 200, 90], "bat");
   else if (id === "boss-goblin") drawEnemy(rgba, w, h, [90, 140, 60], "boss");
   else if (id === "gems-set") {
     const kinds = ["flame", "ice", "leaf", "light"];
@@ -280,7 +283,7 @@ function writeGemCrops() {
   }
 }
 
-function writePortraits() {
+function writePortraits(sources = {}) {
   const heroes = ["hero-warrior", "hero-mage", "hero-ranger", "hero-priest"];
   const colors = [
     [200, 60, 50],
@@ -289,9 +292,13 @@ function writePortraits() {
     [220, 180, 50],
   ];
   for (let i = 0; i < heroes.length; i++) {
+    const pid = `${heroes[i]}-portrait`;
+    const rel = `assets/portraits/${pid}.png`;
+    const abs = join(PUBLIC, rel);
+    if (sources[pid] === "generated" && existsSync(abs)) continue;
     const rgba = new Uint8ClampedArray(32 * 32 * 4);
     drawHero(rgba, 32, 32, colors[i]);
-    writePng(`assets/portraits/${heroes[i]}-portrait.png`, encodePng(32, 32, rgba));
+    writePng(rel, encodePng(32, 32, rgba));
   }
 }
 
@@ -328,13 +335,16 @@ export function generatePlaceholders(existingSources = {}) {
   const sources = { ...existingSources };
   for (const spec of ASSET_SPECS) {
     const abs = join(PUBLIC, spec.publicPath);
-    if (sources[spec.id] === "generated" && existsSync(abs)) continue;
+    if ((sources[spec.id] === "generated" || spec.skipByDefault) && existsSync(abs)) {
+      sources[spec.id] = sources[spec.id] || "generated";
+      continue;
+    }
     writePng(spec.publicPath, paintAsset(spec));
     sources[spec.id] = "procedural";
   }
   writeGemCrops();
   for (const gemId of GEM_IDS) sources[gemId] = sources[gemId] || "procedural";
-  writePortraits();
+  writePortraits(sources);
   for (const hero of ["hero-warrior", "hero-mage", "hero-ranger", "hero-priest"]) {
     const pid = `${hero}-portrait`;
     sources[pid] = sources[pid] || "procedural";

@@ -2,32 +2,50 @@ import Phaser from "phaser";
 import { AudioManager } from "../audio/AudioManager";
 import {
   HERO_IDS,
+  LINE_GEM_H,
+  LINE_GEM_V,
   SPECIAL_GEM_ID,
   type HeroId,
   type BoardGemId,
+  type GemId,
 } from "../assets/types";
-import { createBoard, BOARD_SIZE, isSpecialGem } from "../systems/match3/board";
+import {
+  createBoard,
+  BOARD_SIZE,
+  isLineGem,
+  isPrismaticGem,
+  type CascadeStep,
+  type Board,
+} from "../systems/match3/board";
 import { createParty } from "../systems/combat/heroes";
 import { createEncounterEnemies, type EnemyRuntime } from "../systems/combat/enemies";
 import { BattleController, type AttackEvent } from "../systems/BattleController";
 import { bindBattleDebug } from "../debug/debugApi";
 import { loadSave } from "../data/save";
 import { BATTLE_LAYOUT } from "../data/mapNodes";
-import { elementColor } from "../systems/combat/elements";
+import { elementColor, elementForGem } from "../systems/combat/elements";
 import { potionHealFraction } from "../systems/combat/progression";
 import {
+  CORE_LOOP_COPY,
+  CORE_LOOP_STEPS,
   TUTORIAL_COPY,
+  isCoreLoopStep,
+  markCoreLoopSteps,
   markTutorialStep,
   nextPendingStep,
+  tutorialCandidatesForEncounter,
   type TutorialStepId,
 } from "../systems/tutorial/TutorialManager";
 import { addAudioControls } from "../ui/AudioControls";
+import { createRng, randomSeed } from "../systems/rng";
 
 type GemSprite = Phaser.GameObjects.Image & {
   boardR: number;
   boardC: number;
   prismaticOverlay?: Phaser.GameObjects.Arc;
 };
+
+type MatchOrigin = { x: number; y: number; gem: GemId };
 
 type HeroHudPanel = {
   id: HeroId;
@@ -37,18 +55,11 @@ type HeroHudPanel = {
   chargeGfx: Phaser.GameObjects.Graphics;
   shieldGfx: Phaser.GameObjects.Graphics;
   glow: Phaser.GameObjects.Rectangle;
+  panelW: number;
+  panelH: number;
 };
 
 type BattleInitData = { encounterId?: string };
-
-const BATTLE_TUTORIAL: TutorialStepId[] = [
-  "select_enemy",
-  "swap_gems",
-  "color_heroes",
-  "enemy_countdown",
-  "match_four",
-  "ability_ready",
-];
 
 export class BattleScene extends Phaser.Scene {
   private battle!: BattleController;
@@ -59,6 +70,9 @@ export class BattleScene extends Phaser.Scene {
   private heroHud = new Map<HeroId, HeroHudPanel>();
   private enemyBars = new Map<string, Phaser.GameObjects.Graphics>();
   private countdownBadges = new Map<string, Phaser.GameObjects.Text>();
+  private telegraphBadges = new Map<string, Phaser.GameObjects.Text>();
+  private statusIcons = new Map<string, Phaser.GameObjects.Text>();
+  private objectiveText: Phaser.GameObjects.Text | null = null;
   private heroHome = new Map<HeroId, { x: number; y: number; w: number; h: number }>();
   private enemyHome = new Map<string, { x: number; y: number; w: number; h: number }>();
   private targetMarker!: Phaser.GameObjects.Ellipse;
@@ -68,7 +82,6 @@ export class BattleScene extends Phaser.Scene {
   private tutorialRoot?: Phaser.GameObjects.Container;
   private potionBtn?: Phaser.GameObjects.Text;
   private boardOrigin = { x: 0, y: 0 };
-  private hudStripY = 0;
   private cell = 48;
   private selected: { r: number; c: number } | null = null;
   private dragStart: { r: number; c: number } | null = null;
@@ -80,6 +93,10 @@ export class BattleScene extends Phaser.Scene {
   private currentTutorial: TutorialStepId | null = null;
   private tutorialAbilityShown = false;
   private listenersBound = false;
+  /** Cleared-cell origins from the last resolve, for gem-fly VFX. */
+  private matchOrigins: MatchOrigin[] = [];
+  private cellHighlights: (Phaser.GameObjects.Rectangle | null)[][] = [];
+  private pressedHighlight: Phaser.GameObjects.Rectangle | null = null;
 
   constructor() {
     super("Battle");
@@ -100,6 +117,9 @@ export class BattleScene extends Phaser.Scene {
     this.heroHud.clear();
     this.enemyBars.clear();
     this.countdownBadges.clear();
+    this.telegraphBadges.clear();
+    this.statusIcons.clear();
+    this.objectiveText = null;
     this.heroHome.clear();
     this.enemyHome.clear();
   }
@@ -121,17 +141,26 @@ export class BattleScene extends Phaser.Scene {
     const { width, height } = this.scale;
     this.fieldH = Math.floor(height * BATTLE_LAYOUT.fieldFraction);
 
+    const seed = randomSeed();
+    const rng = createRng(seed);
     this.battle = new BattleController(
       createParty(save.heroLevels),
-      createEncounterEnemies(this.encounterId),
-      createBoard(),
-      { potionHealFraction: potionHealFraction(save.buildingLevels.workshop) },
+      createEncounterEnemies(this.encounterId, save.memoryWipes),
+      createBoard(rng),
+      {
+        potionHealFraction: potionHealFraction(save.buildingLevels.workshop),
+        seed,
+        rng,
+        objective:
+          this.encounterId === "watchtower"
+            ? { type: "survive", turns: 6 }
+            : { type: "eliminate" },
+      },
     );
     bindBattleDebug(this, this.battle);
 
     this.drawBattlefield(width);
     this.layoutCombatants(width);
-    this.layoutHeroHudStrip(width);
     this.layoutBoard(width, height);
     this.layoutChrome(width, save);
     this.refreshAll();
@@ -155,7 +184,8 @@ export class BattleScene extends Phaser.Scene {
 
     this.input.keyboard?.off("keydown-D");
     this.input.keyboard?.on("keydown-D", (ev: KeyboardEvent) => {
-      if (ev.ctrlKey && ev.shiftKey) {
+      // Alt+Shift+D toggles battle state overlay (Ctrl+Shift+D is IDE-bound)
+      if (ev.altKey && ev.shiftKey) {
         this.debugVisible = !this.debugVisible;
         this.stateText.setVisible(this.debugVisible);
       }
@@ -200,19 +230,59 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private layoutCombatants(width: number): void {
-    const heroX = width * BATTLE_LAYOUT.partyX;
-    const heroSize = 68;
-    HERO_IDS.forEach((id, i) => {
-      const y = 64 + i * ((this.fieldH - 90) / 3.5);
-      const x = heroX + (i % 2) * 14;
-      this.add.ellipse(x, y + 32, 44, 12, 0x000000, 0.35);
-      const spr = this.add
-        .image(x, y, id)
-        .setDisplaySize(heroSize, heroSize)
-        .setInteractive({ useHandCursor: true });
-      this.heroSprites.set(id, spr);
-      this.heroHome.set(id, { x, y, w: heroSize, h: heroSize });
-      spr.on("pointerdown", () => this.onHeroTapped(id));
+    const cardW = BATTLE_LAYOUT.partyCardW;
+    const cardH = BATTLE_LAYOUT.partyCardH;
+    const portraitSize = BATTLE_LAYOUT.partyPortraitSize;
+    const gap = BATTLE_LAYOUT.partyGap;
+    const left = Math.floor(width * BATTLE_LAYOUT.partyX);
+    const totalH = cardH * 4 + gap * 3;
+    let y = Math.max(
+      BATTLE_LAYOUT.partyTop,
+      Math.floor((this.fieldH - totalH) / 2),
+    );
+
+    HERO_IDS.forEach((id) => {
+      const root = this.add.container(left, y);
+      const glow = this.add
+        .rectangle(-2, -2, cardW + 4, cardH + 4, 0xf0c050, 0)
+        .setOrigin(0, 0)
+        .setStrokeStyle(2, 0xf0c050, 0);
+      const bg = this.add
+        .rectangle(0, 0, cardW, cardH, 0x12101a, 0.88)
+        .setOrigin(0, 0)
+        .setStrokeStyle(1, 0x4a3a52);
+      const pad = Math.floor((cardH - portraitSize) / 2);
+      const portraitKey = this.textures.exists(`${id}-portrait`) ? `${id}-portrait` : id;
+      const portrait = this.add
+        .image(pad, pad, portraitKey)
+        .setOrigin(0, 0)
+        .setDisplaySize(portraitSize, portraitSize);
+      const hpGfx = this.add.graphics();
+      const chargeGfx = this.add.graphics();
+      const shieldGfx = this.add.graphics();
+      root.add([glow, bg, portrait, hpGfx, chargeGfx, shieldGfx]);
+      root.setSize(cardW, cardH);
+      root.setInteractive(
+        new Phaser.Geom.Rectangle(0, 0, cardW, cardH),
+        Phaser.Geom.Rectangle.Contains,
+      );
+      root.on("pointerdown", () => this.onHeroTapped(id));
+
+      this.heroHud.set(id, {
+        id,
+        root,
+        portrait,
+        hpGfx,
+        chargeGfx,
+        shieldGfx,
+        glow,
+        panelW: cardW,
+        panelH: cardH,
+      });
+      // Local top-left of portrait inside the card (origin 0,0).
+      this.heroSprites.set(id, portrait);
+      this.heroHome.set(id, { x: pad, y: pad, w: portraitSize, h: portraitSize });
+      y += cardH + gap;
     });
 
     const enemyX = width * BATTLE_LAYOUT.enemyX;
@@ -225,9 +295,11 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private enemyY(index: number, total: number): number {
-    const span = this.fieldH - 100;
-    const step = total <= 1 ? 0 : span / (total - 1);
-    return 90 + index * Math.min(step, 110);
+    const spacing = Math.min(110, Math.floor(this.fieldH / Math.max(total, 1) * 0.55));
+    const totalH = total <= 1 ? 0 : spacing * (total - 1);
+    const startY = Math.max(56, Math.floor((this.fieldH - totalH) / 2));
+    const maxY = this.fieldH - 56;
+    return Math.min(maxY, startY + index * spacing);
   }
 
   private spawnEnemyVisual(enemy: EnemyRuntime, enemyX: number, index?: number): void {
@@ -247,15 +319,35 @@ export class BattleScene extends Phaser.Scene {
     this.enemyBars.set(enemy.id, this.add.graphics());
 
     const badge = this.add
-      .text(enemyX, y - 44, String(enemy.countdown), {
+      .text(enemyX - 18, y - 44, String(enemy.countdown), {
         fontFamily: "monospace",
-        fontSize: "22px",
+        fontSize: "20px",
         color: "#1a1008",
         backgroundColor: "#f0c050",
-        padding: { x: 8, y: 4 },
+        padding: { x: 7, y: 3 },
       })
       .setOrigin(0.5);
     this.countdownBadges.set(enemy.id, badge);
+
+    const telegraph = this.add
+      .text(enemyX + 22, y - 44, this.battle.previewPattern(enemy.id), {
+        fontFamily: "monospace",
+        fontSize: "16px",
+        color: "#f2e9d8",
+        backgroundColor: "#3a3044",
+        padding: { x: 6, y: 3 },
+      })
+      .setOrigin(0.5);
+    this.telegraphBadges.set(enemy.id, telegraph);
+
+    const status = this.add
+      .text(enemyX, y + 48, "", {
+        fontFamily: "monospace",
+        fontSize: "12px",
+        color: "#ffaa66",
+      })
+      .setOrigin(0.5);
+    this.statusIcons.set(enemy.id, status);
 
     spr.on("pointerdown", () => {
       if (this.busy || !this.battle.acceptsInput) return;
@@ -267,7 +359,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private layoutBoard(width: number, height: number): void {
-    const boardAreaTop = this.hudStripY + 52;
+    const boardAreaTop = this.fieldH + 8;
     const boardAreaH = height - boardAreaTop - 44;
     const maxCell = BATTLE_LAYOUT.maxGemCell;
     this.cell = Math.min(
@@ -304,42 +396,33 @@ export class BattleScene extends Phaser.Scene {
           .setOrigin(0.5);
       }
     }
-  }
 
-  private layoutHeroHudStrip(width: number): void {
-    this.hudStripY = this.fieldH + 10;
-    const panelW = Math.min(88, Math.floor((width - 48) / 4));
-    const panelH = 44;
-    const gap = 6;
-    const totalW = panelW * 4 + gap * 3;
-    let x = Math.floor((width - totalW) / 2);
-
-    HERO_IDS.forEach((id) => {
-      const root = this.add.container(x, this.hudStripY);
-      const bg = this.add
-        .rectangle(0, 0, panelW, panelH, 0x1a1528)
-        .setOrigin(0, 0)
-        .setStrokeStyle(1, 0x3a3044);
-      const glow = this.add
-        .rectangle(-2, -2, panelW + 4, panelH + 4, 0xf0c050, 0)
-        .setOrigin(0, 0)
-        .setStrokeStyle(2, 0xf0c050, 0);
-      const portraitKey = this.textures.exists(`${id}-portrait`) ? `${id}-portrait` : id;
-      const portrait = this.add
-        .image(6, 4, portraitKey)
-        .setOrigin(0, 0)
-        .setDisplaySize(28, 28);
-      const hpGfx = this.add.graphics();
-      const chargeGfx = this.add.graphics();
-      const shieldGfx = this.add.graphics();
-      root.add([glow, bg, portrait, hpGfx, chargeGfx, shieldGfx]);
-      root.setSize(panelW, panelH);
-      root.setInteractive(new Phaser.Geom.Rectangle(0, 0, panelW, panelH), Phaser.Geom.Rectangle.Contains);
-      root.on("pointerdown", () => this.onHeroTapped(id));
-
-      this.heroHud.set(id, { id, root, portrait, hpGfx, chargeGfx, shieldGfx, glow });
-      x += panelW + gap;
-    });
+    this.cellHighlights = Array.from({ length: BOARD_SIZE }, () =>
+      Array.from({ length: BOARD_SIZE }, () => null),
+    );
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      for (let c = 0; c < BOARD_SIZE; c++) {
+        const hl = this.add
+          .rectangle(
+            this.boardOrigin.x + c * this.cell + this.cell / 2,
+            this.boardOrigin.y + r * this.cell + this.cell / 2,
+            this.cell - 4,
+            this.cell - 4,
+            0xf0c050,
+            0,
+          )
+          .setOrigin(0.5)
+          .setStrokeStyle(2, 0xf0c050, 0)
+          .setDepth(5);
+        this.cellHighlights[r]![c] = hl;
+      }
+    }
+    this.pressedHighlight = this.add
+      .rectangle(0, 0, this.cell - 4, this.cell - 4, 0xffffff, 0)
+      .setOrigin(0.5)
+      .setStrokeStyle(2, 0xffffff, 0)
+      .setDepth(6)
+      .setVisible(false);
   }
 
   private layoutChrome(width: number, _save: ReturnType<typeof loadSave>): void {
@@ -396,6 +479,18 @@ export class BattleScene extends Phaser.Scene {
       })
       .setOrigin(0.5, 1);
 
+    if (this.battle.objective.type === "survive") {
+      this.objectiveText = this.add
+        .text(width / 2, 18, `Survive ${this.battle.surviveTurnsRemaining} turns`, {
+          fontFamily: "monospace",
+          fontSize: "14px",
+          color: "#a0d0ff",
+          backgroundColor: "#1a2030",
+          padding: { x: 10, y: 4 },
+        })
+        .setOrigin(0.5);
+    }
+
     this.toastText = this.add
       .text(width / 2, this.fieldH + 2, "", {
         fontFamily: "monospace",
@@ -436,7 +531,9 @@ export class BattleScene extends Phaser.Scene {
     this.potionBtn?.setBackgroundColor("#6a9c5a").setVisible(false);
     this.audio.sfx("ability_use");
     const panel = this.heroHud.get(heroId);
-    if (panel) this.floatText(panel.root.x + 44, panel.root.y - 8, `+${res.heal}`, "#88ffaa");
+    if (panel) {
+      this.floatText(panel.root.x + panel.panelW * 0.55, panel.root.y - 6, `+${res.heal}`, "#88ffaa");
+    }
     this.refreshAll();
   }
 
@@ -488,9 +585,9 @@ export class BattleScene extends Phaser.Scene {
     r: number,
     c: number,
   ): GemSprite {
-    let texture = gem;
+    let texture: string = gem;
     let overlay: Phaser.GameObjects.Arc | undefined;
-    if (isSpecialGem(gem)) {
+    if (isPrismaticGem(gem)) {
       if (this.textures.exists(SPECIAL_GEM_ID)) {
         texture = SPECIAL_GEM_ID;
       } else {
@@ -498,11 +595,17 @@ export class BattleScene extends Phaser.Scene {
         overlay = this.add.circle(x, y, size * 0.42, 0xffffff, 0.35);
         overlay.setStrokeStyle(2, 0xe0a0ff);
       }
+    } else if (isLineGem(gem)) {
+      texture = this.textures.exists(gem) ? gem : gem === LINE_GEM_H ? LINE_GEM_H : LINE_GEM_V;
+      if (!this.textures.exists(texture)) {
+        texture = "gem-ice";
+        overlay = this.add.circle(x, y, size * 0.4, 0x70d0ff, 0.4);
+      }
     }
     const spr = this.add
       .image(x, y, texture)
       .setDisplaySize(size, size) as GemSprite;
-    if (isSpecialGem(gem) && !this.textures.exists(SPECIAL_GEM_ID)) {
+    if (isPrismaticGem(gem) && !this.textures.exists(SPECIAL_GEM_ID)) {
       spr.setTint(0xd8a0ff);
     }
     spr.boardR = r;
@@ -517,6 +620,26 @@ export class BattleScene extends Phaser.Scene {
     const size = this.gemDisplaySize(selected);
     spr.setDisplaySize(size, size);
     spr.prismaticOverlay?.setRadius(size * 0.42);
+    const hl = this.cellHighlights[r]?.[c];
+    if (hl) {
+      hl.setFillStyle(0xf0c050, selected ? 0.22 : 0);
+      hl.setStrokeStyle(2, 0xf0c050, selected ? 0.95 : 0);
+    }
+  }
+
+  private setPressedCell(cell: { r: number; c: number } | null): void {
+    if (!this.pressedHighlight) return;
+    if (!cell) {
+      this.pressedHighlight.setVisible(false);
+      return;
+    }
+    const { x, y } = this.cellCenter(cell.r, cell.c);
+    this.pressedHighlight
+      .setPosition(x, y)
+      .setSize(this.cell - 4, this.cell - 4)
+      .setFillStyle(0xffffff, 0.18)
+      .setStrokeStyle(2, 0xffffff, 0.85)
+      .setVisible(true);
   }
 
   private resetActorSprite(
@@ -532,6 +655,12 @@ export class BattleScene extends Phaser.Scene {
     this.refreshEnemies();
     this.stateText.setText(this.battle.sm.state);
     this.checkAbilityTutorial();
+    if (this.objectiveText && this.battle.objective.type === "survive") {
+      const left = this.battle.surviveTurnsRemaining ?? 0;
+      this.objectiveText.setText(
+        left > 0 ? `Survive ${left} turns` : "Hold the line!",
+      );
+    }
   }
 
   private refreshHeroField(): void {
@@ -545,33 +674,53 @@ export class BattleScene extends Phaser.Scene {
     });
   }
 
+  private heroWorldCenter(id: HeroId): { x: number; y: number } | null {
+    const panel = this.heroHud.get(id);
+    const home = this.heroHome.get(id);
+    if (!panel || !home) return null;
+    return {
+      x: panel.root.x + home.x + home.w / 2,
+      y: panel.root.y + home.y + home.h / 2,
+    };
+  }
+
   private refreshHeroHud(): void {
     HERO_IDS.forEach((id) => {
       const hero = this.battle.heroes.find((h) => h.id === id)!;
       const panel = this.heroHud.get(id)!;
       const ready = hero.alive && hero.charge >= hero.abilityCost;
-      panel.glow.setFillStyle(0xf0c050, ready ? 0.12 : 0);
-      panel.glow.setStrokeStyle(2, 0xf0c050, ready ? 0.85 : 0);
+      panel.glow.setFillStyle(0xf0c050, ready ? 0.14 : 0);
+      panel.glow.setStrokeStyle(2, 0xf0c050, ready ? 0.9 : 0);
       panel.portrait.setAlpha(hero.alive ? 1 : 0.35);
 
-      const barX = 38;
-      const barW = 44;
+      const portraitSize = BATTLE_LAYOUT.partyPortraitSize;
+      const pad = Math.floor((panel.panelH - portraitSize) / 2);
+      const barX = pad + portraitSize + 8;
+      const barW = panel.panelW - barX - 10;
+      const hpY = pad + 10;
+      const chargeY = pad + 28;
+      const shieldY = pad + 44;
       panel.hpGfx.clear();
       panel.hpGfx.fillStyle(0x221818, 0.95);
-      panel.hpGfx.fillRect(barX, 8, barW, 5);
+      panel.hpGfx.fillRect(barX, hpY, barW, 8);
       panel.hpGfx.fillStyle(hero.alive ? 0x5ad46a : 0x555555, 1);
-      panel.hpGfx.fillRect(barX, 8, barW * (hero.hp / hero.maxHp), 5);
+      panel.hpGfx.fillRect(barX, hpY, barW * (hero.hp / hero.maxHp), 8);
 
       panel.chargeGfx.clear();
       panel.chargeGfx.fillStyle(0x333344, 1);
-      panel.chargeGfx.fillRect(barX, 16, barW, 3);
+      panel.chargeGfx.fillRect(barX, chargeY, barW, 6);
       panel.chargeGfx.fillStyle(ready ? 0xf0c050 : 0x5a8cff, 1);
-      panel.chargeGfx.fillRect(barX, 16, barW * Math.min(1, hero.charge / hero.abilityCost), 3);
+      panel.chargeGfx.fillRect(
+        barX,
+        chargeY,
+        barW * Math.min(1, hero.charge / hero.abilityCost),
+        6,
+      );
 
       panel.shieldGfx.clear();
       if (hero.shield > 0) {
         panel.shieldGfx.fillStyle(0x88ccff, 0.9);
-        panel.shieldGfx.fillRect(barX, 22, barW, 2);
+        panel.shieldGfx.fillRect(barX, shieldY, barW, 4);
       }
     });
   }
@@ -582,16 +731,34 @@ export class BattleScene extends Phaser.Scene {
       const g = this.enemyBars.get(enemy.id);
       const home = this.enemyHome.get(enemy.id);
       const badge = this.countdownBadges.get(enemy.id);
+      const telegraph = this.telegraphBadges.get(enemy.id);
+      const status = this.statusIcons.get(enemy.id);
       if (!spr || !g || !home) continue;
       this.resetActorSprite(spr, home);
       g.clear();
       if (!enemy.alive) {
         spr.setAlpha(0.22);
         badge?.setVisible(false);
+        telegraph?.setVisible(false);
+        status?.setVisible(false);
         continue;
       }
       spr.setAlpha(1);
-      badge?.setVisible(true).setText(String(Math.max(0, enemy.countdown)));
+      const cd = Math.max(0, enemy.countdown);
+      const urgent = cd <= 1;
+      badge
+        ?.setVisible(true)
+        .setText(String(cd))
+        .setBackgroundColor(urgent ? "#e06050" : "#f0c050")
+        .setColor(urgent ? "#fff0e8" : "#1a1008");
+      telegraph
+        ?.setVisible(true)
+        .setText(this.battle.previewPattern(enemy.id))
+        .setBackgroundColor(urgent ? "#6a3030" : "#3a3044");
+      const statusParts: string[] = [];
+      if (enemy.statuses.some((s) => s.id === "burn")) statusParts.push("Burn");
+      if (enemy.statuses.some((s) => s.id === "freeze")) statusParts.push("Freeze");
+      status?.setVisible(statusParts.length > 0).setText(statusParts.join(" · "));
       const w = 58;
       const x = home.x - w / 2;
       const y = home.y - 46;
@@ -627,11 +794,13 @@ export class BattleScene extends Phaser.Scene {
     const cell = this.pointerToCell(pointer.worldX, pointer.worldY);
     if (!cell) return;
     this.dragStart = cell;
+    this.setPressedCell(cell);
     this.audio.sfx("gem_select");
   };
 
   private onPointerUp = (pointer: Phaser.Input.Pointer): void => {
     if (this.busy || !this.battle.acceptsInput || this.potionMode) return;
+    this.setPressedCell(null);
     const end = this.pointerToCell(pointer.worldX, pointer.worldY);
     if (!end) {
       this.dragStart = null;
@@ -663,6 +832,7 @@ export class BattleScene extends Phaser.Scene {
     if (this.selected) this.setGemSelected(this.selected.r, this.selected.c, false);
     this.selected = null;
     this.dragStart = null;
+    this.setPressedCell(null);
   }
 
   private showCascadeFeedback(turn: import("../systems/BattleController").TurnResolution): void {
@@ -690,10 +860,12 @@ export class BattleScene extends Phaser.Scene {
 
       this.audio.sfx("gem_swap");
       const turn = result.turn;
+      this.matchOrigins = this.collectMatchOrigins(turn);
       this.showCascadeFeedback(turn);
       this.playMatchSfx(turn);
-      this.rebuildGemSprites();
+      await this.animateCascadeResolve(turn.resolve);
       await this.playAttackEvents(turn.attacks);
+      this.matchOrigins = [];
       this.refreshAll();
       this.syncTargetMarker();
       this.completeTutorialStep("swap_gems");
@@ -704,6 +876,118 @@ export class BattleScene extends Phaser.Scene {
     } finally {
       this.busy = false;
     }
+  }
+
+  private async animateCascadeResolve(
+    resolve: import("../systems/match3/board").ResolveResult,
+  ): Promise<void> {
+    if (!resolve.steps.length) {
+      this.rebuildGemSprites();
+      return;
+    }
+    for (const step of resolve.steps) {
+      await this.animateCascadeStep(step);
+    }
+    this.rebuildGemSprites();
+  }
+
+  private async animateCascadeStep(step: CascadeStep): Promise<void> {
+    const clearCells = [
+      ...step.cleared.flatMap((g) => g.cells),
+      ...(step.lineClearedCells ?? []),
+    ];
+    // Flash + shrink clears
+    const flashes: Phaser.GameObjects.GameObject[] = [];
+    for (const cell of clearCells.slice(0, 40)) {
+      const { x, y } = this.cellCenter(cell.r, cell.c);
+      const flash = this.add.rectangle(x, y, this.cell - 6, this.cell - 6, 0xffffff, 0.75);
+      flashes.push(flash);
+      const spr = this.gemSprites[cell.r]?.[cell.c];
+      if (spr) {
+        this.tweens.add({
+          targets: [spr, spr.prismaticOverlay].filter(Boolean),
+          scale: 0.2,
+          alpha: 0,
+          duration: 110,
+        });
+      }
+    }
+    if (step.lineClearedCells?.length) {
+      this.cameras.main.flash(80, 120, 200, 255, false);
+    }
+    await this.wait(120);
+    for (const f of flashes) f.destroy();
+
+    // Gravity: rebuild from boardAfterGravity with fall tweens
+    await this.tweenBoardAppear(step.boardAfterGravity, "fall");
+    await this.wait(40);
+    // Fill from top
+    await this.tweenBoardAppear(step.boardAfterFill, "fill");
+    await this.wait(50);
+  }
+
+  private async tweenBoardAppear(
+    board: Board,
+    mode: "fall" | "fill",
+  ): Promise<void> {
+    // Destroy current sprites
+    for (const row of this.gemSprites) {
+      for (const g of row) {
+        g?.prismaticOverlay?.destroy();
+        g?.destroy();
+      }
+    }
+    this.gemSprites = Array.from({ length: BOARD_SIZE }, () =>
+      Array.from({ length: BOARD_SIZE }, () => null),
+    );
+    const size = this.gemDisplaySize(false);
+    const tweens: Promise<void>[] = [];
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      for (let c = 0; c < BOARD_SIZE; c++) {
+        const gem = board[r]![c] as BoardGemId | null;
+        if (!gem) continue;
+        const { x, y } = this.cellCenter(r, c);
+        const startY =
+          mode === "fill"
+            ? this.boardOrigin.y - this.cell * (2 + (r % 3))
+            : y - this.cell * 0.85;
+        const spr = this.createGemSprite(x, startY, gem, size, r, c);
+        spr.setAlpha(mode === "fill" ? 0.85 : 1);
+        this.gemSprites[r]![c] = spr;
+        tweens.push(
+          new Promise((resolve) => {
+            this.tweens.add({
+              targets: [spr, spr.prismaticOverlay].filter(Boolean),
+              y,
+              alpha: 1,
+              duration: mode === "fill" ? 140 : 120,
+              ease: "Cubic.easeOut",
+              onComplete: () => resolve(),
+            });
+          }),
+        );
+      }
+    }
+    await Promise.all(tweens);
+  }
+
+  private collectMatchOrigins(
+    turn: import("../systems/BattleController").TurnResolution,
+  ): MatchOrigin[] {
+    const origins: MatchOrigin[] = [];
+    for (const step of turn.resolve.steps) {
+      for (const group of step.cleared) {
+        for (const cell of group.cells) {
+          const { x, y } = this.cellCenter(cell.r, cell.c);
+          origins.push({ x, y, gem: group.gem });
+        }
+      }
+    }
+    return origins;
+  }
+
+  private originsForGem(gem: GemId): MatchOrigin[] {
+    return this.matchOrigins.filter((o) => o.gem === gem);
   }
 
   private playMatchSfx(turn: import("../systems/BattleController").TurnResolution): void {
@@ -760,6 +1044,16 @@ export class BattleScene extends Phaser.Scene {
         const badge = this.countdownBadges.get(ev.enemyId);
         badge?.setText(String(Math.max(0, ev.countdown)));
         if (ev.countdown <= 1) this.completeTutorialStep("enemy_countdown");
+      } else if (ev.kind === "status_burn") {
+        const home = this.enemyHome.get(ev.enemyId);
+        if (home) {
+          this.floatText(home.x, home.y - 50, `Burn -${ev.damage}`, "#ff8844");
+          await this.hitFlashEnemy(ev.enemyId);
+        }
+      } else if (ev.kind === "status_freeze_block") {
+        const home = this.enemyHome.get(ev.enemyId);
+        if (home) this.floatText(home.x, home.y - 50, "Frozen!", "#88ccff");
+        this.showToast("Enemy frozen!");
       }
       this.refreshAll();
       await this.wait(120);
@@ -771,11 +1065,12 @@ export class BattleScene extends Phaser.Scene {
   ): Promise<void> {
     const spr = this.heroSprites.get(ev.heroId);
     const home = this.heroHome.get(ev.heroId);
+    const world = this.heroWorldCenter(ev.heroId);
     if (spr && home) {
       this.resetActorSprite(spr, home);
       this.tweens.add({
         targets: spr,
-        x: home.x + 14,
+        x: home.x + 10,
         duration: 90,
         yoyo: true,
         onComplete: () => this.resetActorSprite(spr, home),
@@ -796,22 +1091,42 @@ export class BattleScene extends Phaser.Scene {
       this.cameras.main.flash(180, 120, 180, 255);
     }
 
+    const gemColor =
+      ev.kind === "hero_match_attack"
+        ? elementColor(elementForGem(ev.gem))
+        : this.abilityProjectileColor(ev.heroId);
+
     for (const tid of ev.targetIds) {
       const target = this.enemySprites.get(tid);
       const th = this.enemyHome.get(tid);
-      if (!target || !spr || !home || !th) continue;
-      await this.flyProjectile(home.x, home.y, th.x, th.y, 0xff8866);
+      if (!target || !th) continue;
+
+      if (ev.kind === "hero_match_attack") {
+        const origins = this.originsForGem(ev.gem);
+        const pick = origins.length
+          ? origins.slice(0, Math.min(4, origins.length))
+          : world
+            ? [{ x: world.x, y: world.y, gem: ev.gem }]
+            : [];
+        await Promise.all(
+          pick.map((o, i) =>
+            this.flyProjectile(o.x, o.y, th.x, th.y, gemColor, 180 + i * 20),
+          ),
+        );
+      } else if (world) {
+        await this.flyProjectile(world.x, world.y, th.x, th.y, gemColor);
+      }
+
       this.audio.sfx("enemy_hit");
-      this.tweens.add({
-        targets: target,
-        x: th.x + 10,
-        duration: 70,
-        yoyo: true,
-        onComplete: () => this.resetActorSprite(target, th),
-      });
+      await this.hitFlashEnemy(tid);
       this.floatText(th.x, th.y - 36, `-${ev.damage}`, "#ff8866");
       if (ev.affinity && ev.affinity.tag !== "NEUTRAL") {
-        this.floatText(th.x, th.y - 56, ev.affinity.tag, ev.affinity.tag === "WEAK" ? "#88ffaa" : "#ffaa66");
+        this.floatText(
+          th.x,
+          th.y - 56,
+          ev.affinity.tag,
+          ev.affinity.tag === "WEAK" ? "#88ffaa" : "#ffaa66",
+        );
       }
       if (ev.kind === "hero_ability" && ev.execute) {
         this.floatText(th.x, th.y - 72, "EXECUTE", "#f0c050");
@@ -819,10 +1134,39 @@ export class BattleScene extends Phaser.Scene {
     }
     if (ev.heal) {
       const panel = this.heroHud.get(ev.heroId);
-      const x = panel ? panel.root.x + 44 : this.scale.width * 0.2;
+      const x = panel ? panel.root.x + panel.panelW * 0.55 : this.scale.width * 0.2;
       const y = panel ? panel.root.y : 40;
       this.floatText(x, y, `+${ev.heal}`, "#88ffaa");
     }
+  }
+
+  private abilityProjectileColor(heroId: HeroId): number {
+    switch (heroId) {
+      case "hero-warrior":
+        return elementColor("red");
+      case "hero-mage":
+        return elementColor("blue");
+      case "hero-ranger":
+        return elementColor("green");
+      case "hero-priest":
+        return elementColor("yellow");
+    }
+  }
+
+  private async hitFlashEnemy(enemyId: string): Promise<void> {
+    const target = this.enemySprites.get(enemyId);
+    const th = this.enemyHome.get(enemyId);
+    if (!target || !th) return;
+    target.setTint(0xffffff);
+    this.tweens.add({
+      targets: target,
+      x: th.x + 10,
+      duration: 70,
+      yoyo: true,
+      onComplete: () => this.resetActorSprite(target, th),
+    });
+    await this.wait(80);
+    target.clearTint();
   }
 
   private async playEnemyAttack(ev: Extract<AttackEvent, { kind: "enemy_attack" }>): Promise<void> {
@@ -830,7 +1174,8 @@ export class BattleScene extends Phaser.Scene {
     const eh = this.enemyHome.get(ev.enemyId);
     const hs = this.heroSprites.get(ev.heroId);
     const hh = this.heroHome.get(ev.heroId);
-    if (!es || !eh || !hs || !hh) return;
+    const world = this.heroWorldCenter(ev.heroId);
+    if (!es || !eh || !hs || !hh || !world) return;
     this.audio.sfx("enemy_attack");
     await new Promise<void>((resolve) => {
       this.tweens.add({
@@ -844,17 +1189,17 @@ export class BattleScene extends Phaser.Scene {
         },
       });
     });
-    await this.flyProjectile(eh.x - 18, eh.y, hh.x, hh.y, 0xff3344);
+    await this.flyProjectile(eh.x - 18, eh.y, world.x, world.y, 0xff3344);
     this.audio.sfx("hero_hit");
     this.cameras.main.shake(70, 0.005);
     this.tweens.add({
       targets: hs,
-      x: hh.x - 8,
+      x: hh.x - 6,
       duration: 70,
       yoyo: true,
       onComplete: () => this.resetActorSprite(hs, hh),
     });
-    this.floatText(hh.x, hh.y - 36, `-${ev.damage}`, "#ff5555");
+    this.floatText(world.x, world.y - 36, `-${ev.damage}`, "#ff5555");
     if (ev.pattern === "war_cry") this.showToast("War Cry!");
   }
 
@@ -870,14 +1215,21 @@ export class BattleScene extends Phaser.Scene {
     });
   }
 
-  private flyProjectile(x1: number, y1: number, x2: number, y2: number, color: number): Promise<void> {
+  private flyProjectile(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    color: number,
+    duration = 220,
+  ): Promise<void> {
     const orb = this.add.circle(x1, y1, 6, color);
     return new Promise((resolve) => {
       this.tweens.add({
         targets: orb,
         x: x2,
         y: y2,
-        duration: 220,
+        duration,
         onComplete: () => {
           orb.destroy();
           resolve();
@@ -928,9 +1280,11 @@ export class BattleScene extends Phaser.Scene {
 
   private async finishDefeat(): Promise<void> {
     this.audio.sfx("defeat");
-    await this.wait(650);
-    this.audio.playTrack("world");
-    this.scene.start("World");
+    await this.wait(450);
+    this.scene.start("Rewards", {
+      encounterId: this.encounterId,
+      defeat: true,
+    });
   }
 
   private wait(ms: number): Promise<void> {
@@ -945,16 +1299,20 @@ export class BattleScene extends Phaser.Scene {
 
   private showBattleTutorial(): void {
     const save = loadSave();
-    const step = nextPendingStep(save, BATTLE_TUTORIAL);
+    const candidates = tutorialCandidatesForEncounter(this.encounterId);
+    const step = nextPendingStep(save, candidates);
     if (!step) return;
     this.currentTutorial = step;
-    const { width } = this.scale;
-    this.tutorialRoot = this.add.container(width / 2, 8);
+    const copy = isCoreLoopStep(step) ? CORE_LOOP_COPY : TUTORIAL_COPY[step];
+    const { width, height } = this.scale;
+    const tutorialHeight = 52;
+    const topMargin = Math.round(Math.min(28, Math.max(16, height * 0.035)));
+    this.tutorialRoot = this.add.container(width / 2, topMargin + tutorialHeight / 2);
     const bg = this.add
-      .rectangle(0, 0, Math.min(width - 24, 420), 52, 0x1a1528, 0.94)
+      .rectangle(0, 0, Math.min(width - 24, 420), tutorialHeight, 0x1a1528, 0.94)
       .setStrokeStyle(1, 0x3a3044);
     const label = this.add
-      .text(-180, 0, TUTORIAL_COPY[step], {
+      .text(-180, 0, copy, {
         fontFamily: "monospace",
         fontSize: "12px",
         color: "#f2e9d8",
@@ -976,7 +1334,10 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private dismissTutorial(markDone: boolean): void {
-    if (markDone && this.currentTutorial) markTutorialStep(this.currentTutorial);
+    if (markDone && this.currentTutorial) {
+      if (isCoreLoopStep(this.currentTutorial)) markCoreLoopSteps();
+      else markTutorialStep(this.currentTutorial);
+    }
     this.tutorialRoot?.destroy();
     this.tutorialRoot = undefined;
     this.currentTutorial = null;
@@ -984,6 +1345,15 @@ export class BattleScene extends Phaser.Scene {
 
   private completeTutorialStep(step: TutorialStepId): void {
     const save = loadSave();
+    if (isCoreLoopStep(step)) {
+      if (!CORE_LOOP_STEPS.some((s) => nextPendingStep(save, [s]) === s)) return;
+      markCoreLoopSteps();
+      if (this.currentTutorial && isCoreLoopStep(this.currentTutorial)) {
+        this.dismissTutorial(false);
+        this.time.delayedCall(300, () => this.showBattleTutorial());
+      }
+      return;
+    }
     if (nextPendingStep(save, [step]) !== step) return;
     markTutorialStep(step);
     if (this.currentTutorial === step) {
@@ -994,6 +1364,8 @@ export class BattleScene extends Phaser.Scene {
 
   private checkAbilityTutorial(): void {
     if (this.tutorialAbilityShown || this.currentTutorial === "ability_ready") return;
+    const candidates = tutorialCandidatesForEncounter(this.encounterId);
+    if (!candidates.includes("ability_ready")) return;
     const ready = this.battle.heroes.some((h) => h.alive && h.charge >= h.abilityCost);
     if (!ready) return;
     const save = loadSave();

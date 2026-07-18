@@ -2,10 +2,12 @@ import Phaser from "phaser";
 import { BootScene } from "../scenes/BootScene";
 import { PreloadScene } from "../scenes/PreloadScene";
 import { MenuScene } from "../scenes/MenuScene";
+import { IntroScene } from "../scenes/IntroScene";
 import { WorldScene } from "../scenes/WorldScene";
 import { VillageScene } from "../scenes/VillageScene";
 import { BattleScene } from "../scenes/BattleScene";
 import { RewardsScene } from "../scenes/RewardsScene";
+import { EndingScene } from "../scenes/EndingScene";
 
 export const GAME_WIDTH = 960;
 export const GAME_HEIGHT = 720;
@@ -29,10 +31,12 @@ export function createGameConfig(parent: string | HTMLElement): Phaser.Types.Cor
       BootScene,
       PreloadScene,
       MenuScene,
+      IntroScene,
       WorldScene,
       VillageScene,
       BattleScene,
       RewardsScene,
+      EndingScene,
     ],
     input: {
       activePointers: 3,
