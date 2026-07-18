@@ -1,6 +1,7 @@
 import type Phaser from "phaser";
 import { AudioManager } from "../audio/AudioManager";
 import { loadSave } from "../data/save";
+import { pickLayoutProfile } from "./layoutProfile";
 
 export type AudioControlsHandle = {
   refresh: () => void;
@@ -8,6 +9,10 @@ export type AudioControlsHandle = {
 
 type Options = {
   depth?: number;
+  /** Distance from bottom edge to control baseline. */
+  bottomInset?: number;
+  /** Larger tap targets (mobile). */
+  large?: boolean;
 };
 
 /**
@@ -19,21 +24,23 @@ export function addAudioControls(
 ): AudioControlsHandle {
   const audio = AudioManager.get();
   const save = loadSave();
-  const { height } = scene.scale;
+  const { width, height } = scene.scale;
+  const profile = pickLayoutProfile(width, height);
+  const large = opts.large ?? profile === "mobile";
+  const bottomInset = opts.bottomInset ?? (profile === "mobile" ? 36 : 24);
   const depth = opts.depth ?? 1000;
 
   const style: Phaser.Types.GameObjects.Text.TextStyle = {
     fontFamily: "monospace",
-    fontSize: "13px",
+    fontSize: large ? "15px" : "13px",
     color: "#f2e9d8",
     backgroundColor: "#2a2238",
-    padding: { x: 8, y: 5 },
+    padding: { x: large ? 10 : 8, y: large ? 8 : 5 },
   };
 
-  // Single cluster, bottom-left: [♪] [♫]
   const musicX = 12;
-  const sfxX = 60;
-  const y = height - 24;
+  const sfxX = large ? 72 : 60;
+  const y = height - bottomInset + 8;
 
   const musicBtn = scene.add
     .text(musicX, y, save.musicMuted ? "♪ off" : "♪", style)

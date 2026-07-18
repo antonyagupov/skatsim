@@ -22,7 +22,12 @@ import { createEncounterEnemies, type EnemyRuntime } from "../systems/combat/ene
 import { BattleController, type AttackEvent } from "../systems/BattleController";
 import { bindBattleDebug } from "../debug/debugApi";
 import { loadSave } from "../data/save";
-import { BATTLE_LAYOUT } from "../data/mapNodes";
+import {
+  battleLayoutFor,
+  pickLayoutProfile,
+  type BattleLayoutConfig,
+  type LayoutProfile,
+} from "../ui/layoutProfile";
 import { elementColor, elementForGem } from "../systems/combat/elements";
 import { potionHealFraction } from "../systems/combat/progression";
 import {
@@ -97,6 +102,10 @@ export class BattleScene extends Phaser.Scene {
   private matchOrigins: MatchOrigin[] = [];
   private cellHighlights: (Phaser.GameObjects.Rectangle | null)[][] = [];
   private pressedHighlight: Phaser.GameObjects.Rectangle | null = null;
+  private layoutProfile: LayoutProfile = "desktop";
+  private layout: BattleLayoutConfig = battleLayoutFor("desktop");
+  /** Party strip height on mobile (between field and board). */
+  private partyStripH = 0;
 
   constructor() {
     super("Battle");
@@ -139,7 +148,11 @@ export class BattleScene extends Phaser.Scene {
 
     const save = loadSave();
     const { width, height } = this.scale;
-    this.fieldH = Math.floor(height * BATTLE_LAYOUT.fieldFraction);
+    this.layoutProfile = pickLayoutProfile(width, height);
+    this.layout = battleLayoutFor(this.layoutProfile);
+    this.partyStripH =
+      this.layoutProfile === "mobile" ? this.layout.partyCardH + 12 : 0;
+    this.fieldH = Math.floor(height * this.layout.fieldFraction);
 
     const seed = randomSeed();
     const rng = createRng(seed);
@@ -230,62 +243,31 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private layoutCombatants(width: number): void {
-    const cardW = BATTLE_LAYOUT.partyCardW;
-    const cardH = BATTLE_LAYOUT.partyCardH;
-    const portraitSize = BATTLE_LAYOUT.partyPortraitSize;
-    const gap = BATTLE_LAYOUT.partyGap;
-    const left = Math.floor(width * BATTLE_LAYOUT.partyX);
+    if (this.layoutProfile === "mobile") {
+      this.layoutCombatantsMobile(width);
+      return;
+    }
+    this.layoutCombatantsDesktop(width);
+  }
+
+  private layoutCombatantsDesktop(width: number): void {
+    const cardW = this.layout.partyCardW;
+    const cardH = this.layout.partyCardH;
+    const portraitSize = this.layout.partyPortraitSize;
+    const gap = this.layout.partyGap;
+    const left = Math.floor(width * this.layout.partyX);
     const totalH = cardH * 4 + gap * 3;
     let y = Math.max(
-      BATTLE_LAYOUT.partyTop,
+      this.layout.partyTop,
       Math.floor((this.fieldH - totalH) / 2),
     );
 
     HERO_IDS.forEach((id) => {
-      const root = this.add.container(left, y);
-      const glow = this.add
-        .rectangle(-2, -2, cardW + 4, cardH + 4, 0xf0c050, 0)
-        .setOrigin(0, 0)
-        .setStrokeStyle(2, 0xf0c050, 0);
-      const bg = this.add
-        .rectangle(0, 0, cardW, cardH, 0x12101a, 0.88)
-        .setOrigin(0, 0)
-        .setStrokeStyle(1, 0x4a3a52);
-      const pad = Math.floor((cardH - portraitSize) / 2);
-      const portraitKey = this.textures.exists(`${id}-portrait`) ? `${id}-portrait` : id;
-      const portrait = this.add
-        .image(pad, pad, portraitKey)
-        .setOrigin(0, 0)
-        .setDisplaySize(portraitSize, portraitSize);
-      const hpGfx = this.add.graphics();
-      const chargeGfx = this.add.graphics();
-      const shieldGfx = this.add.graphics();
-      root.add([glow, bg, portrait, hpGfx, chargeGfx, shieldGfx]);
-      root.setSize(cardW, cardH);
-      root.setInteractive(
-        new Phaser.Geom.Rectangle(0, 0, cardW, cardH),
-        Phaser.Geom.Rectangle.Contains,
-      );
-      root.on("pointerdown", () => this.onHeroTapped(id));
-
-      this.heroHud.set(id, {
-        id,
-        root,
-        portrait,
-        hpGfx,
-        chargeGfx,
-        shieldGfx,
-        glow,
-        panelW: cardW,
-        panelH: cardH,
-      });
-      // Local top-left of portrait inside the card (origin 0,0).
-      this.heroSprites.set(id, portrait);
-      this.heroHome.set(id, { x: pad, y: pad, w: portraitSize, h: portraitSize });
+      this.createHeroCard(id, left, y, cardW, cardH, portraitSize);
       y += cardH + gap;
     });
 
-    const enemyX = width * BATTLE_LAYOUT.enemyX;
+    const enemyX = width * this.layout.enemyX;
     this.battle.enemies.forEach((e, i) => this.spawnEnemyVisual(e, enemyX, i));
 
     this.targetMarker = this.add
@@ -294,7 +276,101 @@ export class BattleScene extends Phaser.Scene {
       .setVisible(false);
   }
 
+  private layoutCombatantsMobile(width: number): void {
+    const cardW = this.layout.partyCardW;
+    const cardH = this.layout.partyCardH;
+    const portraitSize = this.layout.partyPortraitSize;
+    const gap = this.layout.partyGap;
+    const totalW = cardW * 4 + gap * 3;
+    let x = Math.max(8, Math.floor((width - totalW) / 2));
+    const y = this.fieldH + 6;
+
+    HERO_IDS.forEach((id) => {
+      this.createHeroCard(id, x, y, cardW, cardH, portraitSize);
+      x += cardW + gap;
+    });
+
+    const n = this.battle.enemies.length;
+    this.battle.enemies.forEach((e, i) => {
+      this.spawnEnemyVisual(e, this.enemyXMobile(i, n, width), i);
+    });
+
+    this.targetMarker = this.add
+      .ellipse(0, 0, 72, 20, 0xf0c050, 0.15)
+      .setStrokeStyle(2, 0xf0c050)
+      .setVisible(false);
+  }
+
+  private createHeroCard(
+    id: HeroId,
+    left: number,
+    y: number,
+    cardW: number,
+    cardH: number,
+    portraitSize: number,
+  ): void {
+    const root = this.add.container(left, y);
+    const glow = this.add
+      .rectangle(-2, -2, cardW + 4, cardH + 4, 0xf0c050, 0)
+      .setOrigin(0, 0)
+      .setStrokeStyle(2, 0xf0c050, 0);
+    const bg = this.add
+      .rectangle(0, 0, cardW, cardH, 0x12101a, 0.88)
+      .setOrigin(0, 0)
+      .setStrokeStyle(1, 0x4a3a52);
+    const pad = this.layout.partyBarsBelow
+      ? 4
+      : Math.floor((cardH - portraitSize) / 2);
+    const portraitKey = this.textures.exists(`${id}-portrait`) ? `${id}-portrait` : id;
+    const portraitX = this.layout.partyBarsBelow
+      ? Math.floor((cardW - portraitSize) / 2)
+      : pad;
+    const portrait = this.add
+      .image(portraitX, pad, portraitKey)
+      .setOrigin(0, 0)
+      .setDisplaySize(portraitSize, portraitSize);
+    const hpGfx = this.add.graphics();
+    const chargeGfx = this.add.graphics();
+    const shieldGfx = this.add.graphics();
+    root.add([glow, bg, portrait, hpGfx, chargeGfx, shieldGfx]);
+    root.setSize(cardW, cardH);
+    root.setInteractive(
+      new Phaser.Geom.Rectangle(0, 0, cardW, cardH),
+      Phaser.Geom.Rectangle.Contains,
+    );
+    root.on("pointerdown", () => this.onHeroTapped(id));
+
+    this.heroHud.set(id, {
+      id,
+      root,
+      portrait,
+      hpGfx,
+      chargeGfx,
+      shieldGfx,
+      glow,
+      panelW: cardW,
+      panelH: cardH,
+    });
+    this.heroSprites.set(id, portrait);
+    this.heroHome.set(id, {
+      x: portraitX,
+      y: pad,
+      w: portraitSize,
+      h: portraitSize,
+    });
+  }
+
+  private enemyXMobile(index: number, total: number, width: number): number {
+    if (total <= 1) return width * 0.5;
+    const spacing = Math.min(120, Math.floor((width - 48) / total));
+    const totalW = spacing * (total - 1);
+    return Math.floor(width / 2 - totalW / 2 + index * spacing);
+  }
+
   private enemyY(index: number, total: number): number {
+    if (this.layoutProfile === "mobile") {
+      return Math.floor(this.fieldH * 0.52);
+    }
     const spacing = Math.min(110, Math.floor(this.fieldH / Math.max(total, 1) * 0.55));
     const totalH = total <= 1 ? 0 : spacing * (total - 1);
     const startY = Math.max(56, Math.floor((this.fieldH - totalH) / 2));
@@ -306,22 +382,31 @@ export class BattleScene extends Phaser.Scene {
     const idx = index ?? this.enemySprites.size;
     const total = Math.max(this.battle.enemies.length, idx + 1);
     const y = this.enemyY(idx, total);
-    const size = enemy.isBoss ? 88 : enemy.textureKey.includes("bat") ? 66 : 74;
+    const scale = this.layout.enemyScale;
+    const size = Math.round(
+      (enemy.isBoss ? 88 : enemy.textureKey.includes("bat") ? 66 : 74) * scale,
+    );
 
-    this.add.ellipse(enemyX, y + 32, 50, 14, 0x000000, 0.35);
+    this.add.ellipse(enemyX, y + size * 0.42, 50 * scale, 14 * scale, 0x000000, 0.35);
     const key = this.textures.exists(enemy.textureKey) ? enemy.textureKey : "enemy-slime";
+    const hitPad = size * 0.15;
     const spr = this.add
       .image(enemyX, y, key)
       .setDisplaySize(size, size)
-      .setInteractive({ useHandCursor: true });
+      .setInteractive({
+        useHandCursor: true,
+        hitArea: new Phaser.Geom.Rectangle(-hitPad, -hitPad, size + hitPad * 2, size + hitPad * 2),
+        hitAreaCallback: Phaser.Geom.Rectangle.Contains,
+      });
     this.enemySprites.set(enemy.id, spr);
     this.enemyHome.set(enemy.id, { x: enemyX, y, w: size, h: size });
     this.enemyBars.set(enemy.id, this.add.graphics());
 
+    const badgeY = y - size * 0.55;
     const badge = this.add
-      .text(enemyX - 18, y - 44, String(enemy.countdown), {
+      .text(enemyX - 18, badgeY, String(enemy.countdown), {
         fontFamily: "monospace",
-        fontSize: "20px",
+        fontSize: this.layoutProfile === "mobile" ? "16px" : "20px",
         color: "#1a1008",
         backgroundColor: "#f0c050",
         padding: { x: 7, y: 3 },
@@ -330,9 +415,9 @@ export class BattleScene extends Phaser.Scene {
     this.countdownBadges.set(enemy.id, badge);
 
     const telegraph = this.add
-      .text(enemyX + 22, y - 44, this.battle.previewPattern(enemy.id), {
+      .text(enemyX + 22, badgeY, this.battle.previewPattern(enemy.id), {
         fontFamily: "monospace",
-        fontSize: "16px",
+        fontSize: this.layoutProfile === "mobile" ? "14px" : "16px",
         color: "#f2e9d8",
         backgroundColor: "#3a3044",
         padding: { x: 6, y: 3 },
@@ -341,9 +426,9 @@ export class BattleScene extends Phaser.Scene {
     this.telegraphBadges.set(enemy.id, telegraph);
 
     const status = this.add
-      .text(enemyX, y + 48, "", {
+      .text(enemyX, y + size * 0.58, "", {
         fontFamily: "monospace",
-        fontSize: "12px",
+        fontSize: "11px",
         color: "#ffaa66",
       })
       .setOrigin(0.5);
@@ -359,18 +444,26 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private layoutBoard(width: number, height: number): void {
-    const boardAreaTop = this.fieldH + 8;
-    const boardAreaH = height - boardAreaTop - 44;
-    const maxCell = BATTLE_LAYOUT.maxGemCell;
+    const boardAreaTop = this.fieldH + this.partyStripH + 8;
+    const boardAreaH = height - boardAreaTop - this.layout.chromeBottom - 12;
+    const maxCell = this.layout.maxGemCell;
     this.cell = Math.min(
       maxCell,
-      Math.floor(Math.min((width - 120) / BOARD_SIZE, boardAreaH / BOARD_SIZE)),
+      Math.floor(
+        Math.min(
+          (width - this.layout.boardSidePad) / BOARD_SIZE,
+          boardAreaH / BOARD_SIZE,
+        ),
+      ),
     );
+    if (this.layoutProfile === "mobile") {
+      this.cell = Math.max(36, this.cell);
+    }
     const boardW = this.cell * BOARD_SIZE;
     const boardH = this.cell * BOARD_SIZE;
     this.boardOrigin = {
       x: Math.floor((width - boardW) / 2),
-      y: boardAreaTop + Math.floor((boardAreaH - boardH) / 2),
+      y: boardAreaTop + Math.floor(Math.max(0, boardAreaH - boardH) / 2),
     };
 
     this.add
@@ -426,20 +519,26 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private layoutChrome(width: number, _save: ReturnType<typeof loadSave>): void {
-    const y = this.scale.height - 24;
+    const y = this.scale.height - this.layout.chromeBottom + 8;
+    const padX = this.layoutProfile === "mobile" ? 10 : 8;
+    const padY = this.layoutProfile === "mobile" ? 8 : 5;
     const btnStyle = {
       fontFamily: "monospace",
-      fontSize: "14px",
+      fontSize: this.layoutProfile === "mobile" ? "15px" : "14px",
       color: "#f2e9d8",
       backgroundColor: "#2a2238",
-      padding: { x: 8, y: 5 },
+      padding: { x: padX, y: padY },
     };
 
-    addAudioControls(this);
+    addAudioControls(this, {
+      bottomInset: this.layout.chromeBottom,
+      large: this.layoutProfile === "mobile",
+    });
 
     if (this.battle.potionAvailable) {
+      const potionX = this.layoutProfile === "mobile" ? 118 : 130;
       this.potionBtn = this.add
-        .text(130, y, "Potion", {
+        .text(potionX, y, "Potion", {
           ...btnStyle,
           color: "#1a1008",
           backgroundColor: "#6a9c5a",
@@ -457,10 +556,10 @@ export class BattleScene extends Phaser.Scene {
     this.add
       .text(width - 12, y, "Map", {
         fontFamily: "monospace",
-        fontSize: "13px",
+        fontSize: this.layoutProfile === "mobile" ? "15px" : "13px",
         color: "#1a1008",
         backgroundColor: "#c8b090",
-        padding: { x: 10, y: 5 },
+        padding: { x: padX + 2, y: padY },
       })
       .setOrigin(1, 0.5)
       .setInteractive({ useHandCursor: true })
@@ -472,7 +571,7 @@ export class BattleScene extends Phaser.Scene {
       });
 
     this.cascadeText = this.add
-      .text(width / 2, this.boardOrigin.y - 14, "", {
+      .text(width / 2, this.boardOrigin.y - 10, "", {
         fontFamily: "monospace",
         fontSize: "12px",
         color: "#f0c050",
@@ -481,9 +580,9 @@ export class BattleScene extends Phaser.Scene {
 
     if (this.battle.objective.type === "survive") {
       this.objectiveText = this.add
-        .text(width / 2, 18, `Survive ${this.battle.surviveTurnsRemaining} turns`, {
+        .text(width / 2, 14, `Survive ${this.battle.surviveTurnsRemaining} turns`, {
           fontFamily: "monospace",
-          fontSize: "14px",
+          fontSize: this.layoutProfile === "mobile" ? "13px" : "14px",
           color: "#a0d0ff",
           backgroundColor: "#1a2030",
           padding: { x: 10, y: 4 },
@@ -492,7 +591,7 @@ export class BattleScene extends Phaser.Scene {
     }
 
     this.toastText = this.add
-      .text(width / 2, this.fieldH + 2, "", {
+      .text(width / 2, this.fieldH + this.partyStripH + 2, "", {
         fontFamily: "monospace",
         fontSize: "14px",
         color: "#f2e9d8",
@@ -545,8 +644,10 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private pointerToCell(x: number, y: number): { r: number; c: number } | null {
-    const c = Math.floor((x - this.boardOrigin.x) / this.cell);
-    const r = Math.floor((y - this.boardOrigin.y) / this.cell);
+    // Slightly larger hit pad on mobile for fat-finger swaps
+    const pad = this.layoutProfile === "mobile" ? 4 : 0;
+    const c = Math.floor((x - this.boardOrigin.x + pad) / this.cell);
+    const r = Math.floor((y - this.boardOrigin.y + pad) / this.cell);
     if (r < 0 || c < 0 || r >= BOARD_SIZE || c >= BOARD_SIZE) return null;
     return { r, c };
   }
@@ -693,7 +794,36 @@ export class BattleScene extends Phaser.Scene {
       panel.glow.setStrokeStyle(2, 0xf0c050, ready ? 0.9 : 0);
       panel.portrait.setAlpha(hero.alive ? 1 : 0.35);
 
-      const portraitSize = BATTLE_LAYOUT.partyPortraitSize;
+      const portraitSize = this.layout.partyPortraitSize;
+      if (this.layout.partyBarsBelow) {
+        const barX = 6;
+        const barW = panel.panelW - 12;
+        const barTop = 4 + portraitSize + 4;
+        panel.hpGfx.clear();
+        panel.hpGfx.fillStyle(0x221818, 0.95);
+        panel.hpGfx.fillRect(barX, barTop, barW, 6);
+        panel.hpGfx.fillStyle(hero.alive ? 0x5ad46a : 0x555555, 1);
+        panel.hpGfx.fillRect(barX, barTop, barW * (hero.hp / hero.maxHp), 6);
+
+        panel.chargeGfx.clear();
+        panel.chargeGfx.fillStyle(0x333344, 1);
+        panel.chargeGfx.fillRect(barX, barTop + 10, barW, 5);
+        panel.chargeGfx.fillStyle(ready ? 0xf0c050 : 0x5a8cff, 1);
+        panel.chargeGfx.fillRect(
+          barX,
+          barTop + 10,
+          barW * Math.min(1, hero.charge / hero.abilityCost),
+          5,
+        );
+
+        panel.shieldGfx.clear();
+        if (hero.shield > 0) {
+          panel.shieldGfx.fillStyle(0x88ccff, 0.9);
+          panel.shieldGfx.fillRect(barX, barTop + 18, barW, 3);
+        }
+        return;
+      }
+
       const pad = Math.floor((panel.panelH - portraitSize) / 2);
       const barX = pad + portraitSize + 8;
       const barW = panel.panelW - barX - 10;
@@ -1031,8 +1161,13 @@ export class BattleScene extends Phaser.Scene {
         this.showToast("Boss enraged!");
         this.cameras.main.flash(200, 180, 40, 40);
       } else if (ev.kind === "enemy_spawn") {
-        const enemyX = this.scale.width * BATTLE_LAYOUT.enemyX;
-        this.spawnEnemyVisual(ev.enemy, enemyX);
+        const n = this.battle.enemies.length;
+        const idx = Math.max(0, this.battle.enemies.findIndex((e) => e.id === ev.enemy.id));
+        const enemyX =
+          this.layoutProfile === "mobile"
+            ? this.enemyXMobile(idx, n, this.scale.width)
+            : this.scale.width * this.layout.enemyX;
+        this.spawnEnemyVisual(ev.enemy, enemyX, idx);
         this.showToast(`${ev.enemy.name} appears!`);
       } else if (ev.kind === "extra_move") {
         this.showToast("Extra Move!");

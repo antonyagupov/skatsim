@@ -192,22 +192,6 @@ export function nodeRewardPreview(node: MapNodeDef) {
   return rewardPreview(node.encounterId);
 }
 
-/** Layout constants for battle composition — party LEFT, enemies RIGHT. */
-export const BATTLE_LAYOUT = {
-  partySide: "left" as const,
-  enemySide: "right" as const,
-  /** Party card left edge as fraction of width */
-  partyX: 0.02,
-  /** Enemy center X as fraction of width */
-  enemyX: 0.82,
-  /** Upper battlefield fraction of height */
-  fieldFraction: 0.52,
-  /** Cap match-3 cell size so the board does not dominate */
-  maxGemCell: 50,
-  /** Portrait card on the left battlefield */
-  partyPortraitSize: 78,
-  partyCardW: 152,
-  partyCardH: 92,
-  partyTop: 20,
-  partyGap: 6,
-};
+/** Layout constants for battle composition — party LEFT, enemies RIGHT (desktop). */
+export { DESKTOP_BATTLE_LAYOUT as BATTLE_LAYOUT } from "../ui/layoutProfile";
+export type { BattleLayoutConfig } from "../ui/layoutProfile";

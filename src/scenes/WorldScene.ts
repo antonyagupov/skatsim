@@ -10,6 +10,7 @@ import {
 import { loadSave, resetSave } from "../data/save";
 import { elementColor } from "../systems/combat/elements";
 import { addAudioControls } from "../ui/AudioControls";
+import { pickLayoutProfile } from "../ui/layoutProfile";
 
 export class WorldScene extends Phaser.Scene {
   constructor() {
@@ -21,6 +22,7 @@ export class WorldScene extends Phaser.Scene {
     void audio.unlock().then(() => audio.playTrack("world"));
     const save = loadSave();
     const { width, height } = this.scale;
+    const mobile = pickLayoutProfile(width, height) === "mobile";
 
     if (this.textures.exists("env-worldmap")) {
       this.add
@@ -103,7 +105,7 @@ export class WorldScene extends Phaser.Scene {
           ? 0x5a8c4a
           : node.color;
 
-      const radius = node.kind === "village" ? 22 : node.isBoss ? 20 : 16;
+      const radius = (node.kind === "village" ? 22 : node.isBoss ? 20 : 16) + (mobile ? 4 : 0);
       const circle = this.add
         .circle(nx, ny, radius, fill)
         .setStrokeStyle(3, locked ? 0x666066 : node.isBoss ? 0xff6060 : 0xf0c050);
@@ -164,7 +166,12 @@ export class WorldScene extends Phaser.Scene {
       }
 
       if (unlocked) {
-        circle.setInteractive({ useHandCursor: true });
+        const hitR = radius + (mobile ? 12 : 4);
+        circle.setInteractive(
+          new Phaser.Geom.Circle(0, 0, hitR),
+          Phaser.Geom.Circle.Contains,
+        );
+        if (circle.input) circle.input.cursor = "pointer";
         if (!completed) {
           this.tweens.add({
             targets: circle,

@@ -4,6 +4,7 @@ import { installDebugApi } from "../debug/debugApi";
 import { loadSave } from "../data/save";
 import { addAudioControls } from "../ui/AudioControls";
 import { GAME_VERSION } from "../config/version";
+import { pickLayoutProfile } from "../ui/layoutProfile";
 
 export class MenuScene extends Phaser.Scene {
   constructor() {
@@ -14,6 +15,7 @@ export class MenuScene extends Phaser.Scene {
     const audio = AudioManager.get();
     installDebugApi(this.game);
     const { width, height } = this.scale;
+    const mobile = pickLayoutProfile(width, height) === "mobile";
 
     if (this.textures.exists("splash-bg")) {
       this.add.image(width / 2, height / 2, "splash-bg").setDisplaySize(width, height);
@@ -27,19 +29,22 @@ export class MenuScene extends Phaser.Scene {
 
     this.cameras.main.fadeIn(420, 10, 8, 16);
 
+    const titleSize = mobile ? "48px" : "70px";
+    const titleY = mobile ? height * 0.22 : height * 0.19;
+
     this.add
-      .text(width / 2 + 3, height * 0.19 + 4, "SKATSIM", {
+      .text(width / 2 + 3, titleY + 4, "SKATSIM", {
         fontFamily: "Cinzel, Palatino, serif",
-        fontSize: "70px",
+        fontSize: titleSize,
         color: "#08060d",
       })
       .setOrigin(0.5)
       .setAlpha(0.72);
 
     this.add
-      .text(width / 2, height * 0.19, "SKATSIM", {
+      .text(width / 2, titleY, "SKATSIM", {
         fontFamily: "Cinzel, Palatino, serif",
-        fontSize: "70px",
+        fontSize: titleSize,
         color: "#f7efdc",
         stroke: "#5f351d",
         strokeThickness: 2,
@@ -47,37 +52,45 @@ export class MenuScene extends Phaser.Scene {
       .setLetterSpacing(3)
       .setOrigin(0.5);
 
-    const ruleY = height * 0.27;
-    this.add.rectangle(width / 2 - 154, ruleY, 92, 1, 0xd4aa62, 0.72);
+    const ruleY = mobile ? height * 0.3 : height * 0.27;
+    const ruleW = mobile ? 60 : 92;
+    this.add.rectangle(width / 2 - (mobile ? 100 : 154), ruleY, ruleW, 1, 0xd4aa62, 0.72);
     this.add.rectangle(width / 2, ruleY, 8, 8, 0xd4aa62, 0.9).setAngle(45);
-    this.add.rectangle(width / 2 + 154, ruleY, 92, 1, 0xd4aa62, 0.72);
+    this.add.rectangle(width / 2 + (mobile ? 100 : 154), ruleY, ruleW, 1, 0xd4aa62, 0.72);
 
     this.add
-      .text(width / 2, height * 0.31, "idea by Aleksey Ivashov", {
+      .text(width / 2, mobile ? height * 0.34 : height * 0.31, "idea by Aleksey Ivashov", {
         fontFamily: "monospace",
-        fontSize: "14px",
+        fontSize: mobile ? "12px" : "14px",
         color: "#ead7b4",
       })
       .setOrigin(0.5);
 
     this.add
-      .text(width / 2, height * 0.37, "MATCH-3 JRPG  ·  LATE-SNES SPIRIT", {
-        fontFamily: "monospace",
-        fontSize: "13px",
-        color: "#c8b090",
-      })
+      .text(
+        width / 2,
+        mobile ? height * 0.39 : height * 0.37,
+        mobile ? "MATCH-3 JRPG" : "MATCH-3 JRPG  ·  LATE-SNES SPIRIT",
+        {
+          fontFamily: "monospace",
+          fontSize: mobile ? "12px" : "13px",
+          color: "#c8b090",
+        },
+      )
       .setLetterSpacing(2)
       .setOrigin(0.5);
 
-    const playY = height * 0.49;
+    const playY = mobile ? height * 0.52 : height * 0.49;
+    const playW = mobile ? 240 : 210;
+    const playH = mobile ? 64 : 58;
     const playBg = this.add
-      .rectangle(width / 2, playY, 210, 58, 0x241521, 0.92)
+      .rectangle(width / 2, playY, playW, playH, 0x241521, 0.92)
       .setStrokeStyle(2, 0xd4aa62, 0.95)
       .setInteractive({ useHandCursor: true });
     const playLabel = this.add
       .text(width / 2, playY, "▶  PLAY", {
         fontFamily: "monospace",
-        fontSize: "25px",
+        fontSize: mobile ? "26px" : "25px",
         color: "#f7efdc",
       })
       .setLetterSpacing(2)

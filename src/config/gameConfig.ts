@@ -8,16 +8,18 @@ import { VillageScene } from "../scenes/VillageScene";
 import { BattleScene } from "../scenes/BattleScene";
 import { RewardsScene } from "../scenes/RewardsScene";
 import { EndingScene } from "../scenes/EndingScene";
+import { resolveGameSize } from "../ui/layoutProfile";
 
 export const GAME_WIDTH = 960;
 export const GAME_HEIGHT = 720;
 
 export function createGameConfig(parent: string | HTMLElement): Phaser.Types.Core.GameConfig {
+  const size = resolveGameSize();
   return {
     type: Phaser.AUTO,
     parent,
-    width: GAME_WIDTH,
-    height: GAME_HEIGHT,
+    width: size.width,
+    height: size.height,
     backgroundColor: "#120e18",
     pixelArt: true,
     antialias: false,

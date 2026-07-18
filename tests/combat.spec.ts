@@ -42,6 +42,11 @@ import {
 } from "../src/systems/combat/formulas";
 import { BATTLE_LAYOUT, MAP_NODES, isNodeUnlocked } from "../src/data/mapNodes";
 import {
+  battleLayoutFor,
+  pickLayoutProfile,
+  resolveGameSize,
+} from "../src/ui/layoutProfile";
+import {
   computeBattleRewards,
   computeDefeatRewards,
   ENCOUNTER_REWARDS,
@@ -109,6 +114,17 @@ describe("battle layout configuration", () => {
     expect(BATTLE_LAYOUT.enemySide).toBe("right");
     expect(BATTLE_LAYOUT.partyX).toBeLessThan(0.5);
     expect(BATTLE_LAYOUT.enemyX).toBeGreaterThan(0.5);
+  });
+
+  it("picks mobile profile for tall canvases", () => {
+    expect(pickLayoutProfile(960, 720)).toBe("desktop");
+    expect(pickLayoutProfile(420, 760)).toBe("mobile");
+    expect(resolveGameSize(390, 844).height).toBeGreaterThan(
+      resolveGameSize(390, 844).width,
+    );
+    expect(resolveGameSize(1280, 800)).toEqual({ width: 960, height: 720 });
+    expect(battleLayoutFor("mobile").partySide).toBe("bottom");
+    expect(battleLayoutFor("mobile").enemySide).toBe("top");
   });
 
   it("unlocks hollow keep after watchtower", () => {
