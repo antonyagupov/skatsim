@@ -182,10 +182,16 @@ function drawBattleRef(rgba, w, h) {
 
 function drawWorld(rgba, w, h) {
   fillRect(rgba, w, 0, 0, w, h, 90, 160, 220);
-  fillRect(rgba, w, 0, h * 0.45, w, h * 0.55, 70, 140, 70);
-  fillRect(rgba, w, w * 0.2, h * 0.5, w * 0.5, 8, 160, 130, 70);
-  fillCircle(rgba, w, w * 0.7, h * 0.55, 18, 50, 120, 50);
-  fillRect(rgba, w, w * 0.35, h * 0.42, 16, 16, 180, 90, 60);
+  fillRect(rgba, w, 0, h * 0.4, w, h * 0.6, 70, 140, 70);
+  // Serpentine road left → right with lower ch2 band
+  fillRect(rgba, w, w * 0.08, h * 0.5, w * 0.72, 8, 160, 130, 70);
+  fillRect(rgba, w, w * 0.5, h * 0.5, 8, h * 0.28, 160, 130, 70);
+  fillRect(rgba, w, w * 0.5, h * 0.76, w * 0.4, 8, 160, 130, 70);
+  fillRect(rgba, w, w * 0.08, h * 0.42, 16, 16, 180, 140, 80);
+  fillRect(rgba, w, w * 0.72, h * 0.46, 22, 18, 110, 55, 45);
+  fillRect(rgba, w, w * 0.85, h * 0.58, 18, 22, 50, 60, 100);
+  fillCircle(rgba, w, w * 0.12, h * 0.3, 14, 45, 110, 45);
+  fillCircle(rgba, w, w * 0.9, h * 0.28, 14, 45, 110, 45);
 }
 
 function drawVillage(rgba, w, h) {
@@ -222,21 +228,46 @@ function drawVillageMobile(rgba, w, h) {
   fillCircle(rgba, w, Math.floor(w * 0.72), Math.floor(h * 0.6), 8, 255, 120, 40);
 }
 
-/** Portrait world map: vertical path top → bottom. */
+/** Portrait world map: serpentine path top → fortress → ch2 → keep. */
 function drawWorldMobile(rgba, w, h) {
   fillRect(rgba, w, 0, 0, w, h, 90, 160, 220);
-  fillRect(rgba, w, 0, Math.floor(h * 0.12), w, Math.floor(h * 0.88), 70, 140, 70);
-  // Main winding path
-  fillRect(rgba, w, Math.floor(w * 0.42), Math.floor(h * 0.1), 14, Math.floor(h * 0.72), 160, 130, 70);
-  fillRect(rgba, w, Math.floor(w * 0.3), Math.floor(h * 0.28), Math.floor(w * 0.35), 10, 160, 130, 70);
-  fillRect(rgba, w, Math.floor(w * 0.3), Math.floor(h * 0.48), Math.floor(w * 0.4), 10, 160, 130, 70);
-  // Village marker (top)
-  fillRect(rgba, w, Math.floor(w * 0.38), Math.floor(h * 0.1), 24, 20, 180, 140, 80);
-  // Forest clumps
-  fillCircle(rgba, w, Math.floor(w * 0.7), Math.floor(h * 0.36), 22, 50, 120, 50);
-  fillCircle(rgba, w, Math.floor(w * 0.25), Math.floor(h * 0.5), 18, 45, 110, 45);
-  // Fortress (bottom)
-  fillRect(rgba, w, Math.floor(w * 0.35), Math.floor(h * 0.72), Math.floor(w * 0.3), 28, 100, 50, 40);
+  fillRect(rgba, w, 0, Math.floor(h * 0.1), w, Math.floor(h * 0.9), 72, 142, 72);
+  // Quiet field bands
+  fillRect(rgba, w, Math.floor(w * 0.08), Math.floor(h * 0.18), Math.floor(w * 0.84), Math.floor(h * 0.12), 80, 150, 80);
+  fillRect(rgba, w, Math.floor(w * 0.08), Math.floor(h * 0.4), Math.floor(w * 0.84), Math.floor(h * 0.12), 78, 148, 78);
+  // Serpentine road segments matching L/C/R columns
+  const road = (x0, y0, x1, y1) => {
+    const steps = 12;
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const x = Math.floor(x0 + (x1 - x0) * t);
+      const y = Math.floor(y0 + (y1 - y0) * t);
+      fillRect(rgba, w, x - 5, y - 4, 10, 8, 160, 130, 70);
+    }
+  };
+  const px = (fx) => Math.floor(w * fx);
+  const py = (fy) => Math.floor(h * fy);
+  road(px(0.5), py(0.12), px(0.22), py(0.25));
+  road(px(0.22), py(0.25), px(0.78), py(0.34));
+  road(px(0.78), py(0.34), px(0.22), py(0.43));
+  road(px(0.22), py(0.43), px(0.78), py(0.5));
+  road(px(0.78), py(0.5), px(0.5), py(0.58));
+  // Chapter band
+  fillRect(rgba, w, 0, py(0.645) - 10, w, 20, 40, 70, 90);
+  road(px(0.5), py(0.58), px(0.22), py(0.7));
+  road(px(0.22), py(0.7), px(0.78), py(0.76));
+  road(px(0.78), py(0.76), px(0.2), py(0.82));
+  road(px(0.2), py(0.82), px(0.78), py(0.89));
+  // Sparse landmarks (quiet elsewhere)
+  fillRect(rgba, w, px(0.5) - 12, py(0.12) - 8, 24, 16, 180, 140, 80); // village
+  fillCircle(rgba, w, px(0.78), py(0.5), 14, 40, 40, 50); // cave
+  fillRect(rgba, w, px(0.5) - 18, py(0.58) - 10, 36, 22, 110, 55, 45); // fortress
+  fillRect(rgba, w, px(0.22) - 16, py(0.7) - 6, 32, 12, 50, 100, 80); // marsh
+  fillRect(rgba, w, px(0.78) - 20, py(0.76) - 4, 40, 8, 90, 90, 100); // bridge
+  fillRect(rgba, w, px(0.78) - 14, py(0.89) - 16, 28, 28, 50, 60, 100); // hollow keep
+  // Edge forests only
+  fillCircle(rgba, w, 18, py(0.35), 16, 45, 110, 45);
+  fillCircle(rgba, w, w - 18, py(0.28), 16, 45, 110, 45);
 }
 
 function drawBossArena(rgba, w, h) {

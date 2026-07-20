@@ -40,7 +40,12 @@ import {
   applyDamageToHero,
   healHero,
 } from "../src/systems/combat/formulas";
-import { BATTLE_LAYOUT, MAP_NODES, isNodeUnlocked } from "../src/data/mapNodes";
+import { BATTLE_LAYOUT, MAP_EDGES_DESKTOP, MAP_EDGES_MOBILE, MAP_NODES, isNodeUnlocked } from "../src/data/mapNodes";
+import { MOBILE_MAP_LAYOUT } from "../src/data/mapLayout";
+import {
+  allBattleSubtitleIds,
+  validateMapLayout,
+} from "../src/data/mapLayoutValidate";
 import {
   battleLayoutFor,
   pickLayoutProfile,
@@ -450,6 +455,23 @@ describe("world map progression", () => {
     expect(isNodeUnlocked(marsh, save)).toBe(false);
     save.chapter2Unlocked = true;
     expect(isNodeUnlocked(marsh, save)).toBe(true);
+  });
+
+  it("uses village→marsh on desktop and fortress→marsh on mobile", () => {
+    expect(MAP_EDGES_DESKTOP).toContainEqual(["village", "marsh-crossing"]);
+    expect(MAP_EDGES_DESKTOP).not.toContainEqual(["goblin-fortress", "marsh-crossing"]);
+    expect(MAP_EDGES_MOBILE).toContainEqual(["goblin-fortress", "marsh-crossing"]);
+    expect(MAP_EDGES_MOBILE).not.toContainEqual(["village", "marsh-crossing"]);
+  });
+
+  it("has a collision-free mobile layout at 420×760", () => {
+    const collisions = validateMapLayout(MOBILE_MAP_LAYOUT, {
+      width: 420,
+      height: 760,
+      mobile: true,
+      subtitleIds: allBattleSubtitleIds(),
+    });
+    expect(collisions).toEqual([]);
   });
 });
 

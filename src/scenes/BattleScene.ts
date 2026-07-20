@@ -100,6 +100,9 @@ export class BattleScene extends Phaser.Scene {
   private currentTutorial: TutorialStepId | null = null;
   private tutorialAbilityShown = false;
   private listenersBound = false;
+  /** Ignore orphan pointerup from the tap that entered this scene. */
+  private boardPointerArmed = false;
+  private ignoreBoardInputUntil = 0;
   /** Cleared-cell origins from the last resolve, for gem-fly VFX. */
   private matchOrigins: MatchOrigin[] = [];
   private cellHighlights: (Phaser.GameObjects.Rectangle | null)[][] = [];
@@ -118,6 +121,8 @@ export class BattleScene extends Phaser.Scene {
     this.busy = false;
     this.selected = null;
     this.dragStart = null;
+    this.boardPointerArmed = false;
+    this.ignoreBoardInputUntil = 0;
     this.potionMode = false;
     this.debugVisible = false;
     this.currentTutorial = null;
@@ -138,6 +143,7 @@ export class BattleScene extends Phaser.Scene {
   create(): void {
     this.busy = false;
     this.potionMode = false;
+    this.boardPointerArmed = false;
     this.clearGemSelection();
     this.tweens.killAll();
     this.time.removeAllEvents();
@@ -188,6 +194,10 @@ export class BattleScene extends Phaser.Scene {
     this.input.on("pointerdown", this.onPointerDown, this);
     this.input.on("pointerup", this.onPointerUp, this);
     this.listenersBound = true;
+    // Drop any selection caused by the entering tap's orphan pointerup.
+    this.boardPointerArmed = false;
+    this.clearGemSelection();
+    this.ignoreBoardInputUntil = this.time.now + 220;
 
     this.events.off("debug-regen-board");
     this.events.on("debug-regen-board", () => {
@@ -214,6 +224,8 @@ export class BattleScene extends Phaser.Scene {
   private onShutdown(): void {
     this.busy = false;
     this.potionMode = false;
+    this.boardPointerArmed = false;
+    this.ignoreBoardInputUntil = 0;
     this.clearGemSelection();
     this.tweens.killAll();
     this.time.removeAllEvents();
@@ -543,23 +555,43 @@ export class BattleScene extends Phaser.Scene {
       padding: { x: padX, y: padY },
     };
 
-    // Thumb row near bottom: Potion + Map. Audio sits above on mobile.
-    const thumbY = this.scale.height - (mobile ? 28 : this.layout.chromeBottom - 8);
+    // Same bottom baseline as other scenes: [♪][♫] …… [Potion][Map]
+    const chromeY = this.scale.height - this.layout.chromeBottom + 8;
     addAudioControls(this, {
       bottomInset: this.layout.chromeBottom,
       large: mobile,
-      yOffset: mobile ? 36 : 0,
+    });
+
+    const mapBtn = this.add
+      .text(width - 12, chromeY, "Map", {
+        fontFamily: "monospace",
+        fontSize: mobile ? "16px" : "13px",
+        color: "#1a1008",
+        backgroundColor: "#c8b090",
+        padding: { x: padX + 2, y: padY },
+      })
+      .setOrigin(1, 0.5)
+      .setDepth(1000)
+      .setInteractive({ useHandCursor: true });
+    mapBtn.on("pointerdown", () => {
+      this.busy = false;
+      this.clearGemSelection();
+      this.boardPointerArmed = false;
+      this.potionMode = false;
+      this.audio.sfx("ui_click");
+      this.audio.playTrack("world");
+      this.scene.start("World");
     });
 
     if (this.battle.potionAvailable) {
-      const potionX = mobile ? 16 : 130;
+      const gap = 8;
       this.potionBtn = this.add
-        .text(potionX, thumbY, "Potion", {
+        .text(mapBtn.x - mapBtn.width - gap, chromeY, "Potion", {
           ...btnStyle,
           color: "#1a1008",
           backgroundColor: "#6a9c5a",
         })
-        .setOrigin(0, 0.5)
+        .setOrigin(1, 0.5)
         .setDepth(1000)
         .setInteractive({ useHandCursor: true });
       this.potionBtn.on("pointerdown", () => {
@@ -570,26 +602,6 @@ export class BattleScene extends Phaser.Scene {
         this.audio.sfx("ui_click");
       });
     }
-
-    this.add
-      .text(width - 12, thumbY, "Map", {
-        fontFamily: "monospace",
-        fontSize: mobile ? "16px" : "13px",
-        color: "#1a1008",
-        backgroundColor: "#c8b090",
-        padding: { x: padX + 2, y: padY },
-      })
-      .setOrigin(1, 0.5)
-      .setDepth(1000)
-      .setInteractive({ useHandCursor: true })
-      .on("pointerdown", () => {
-        this.busy = false;
-        this.clearGemSelection();
-        this.potionMode = false;
-        this.audio.sfx("ui_click");
-        this.audio.playTrack("world");
-        this.scene.start("World");
-      });
 
     this.add
       .text(width - 12, mobile ? 10 : 8, `v${GAME_VERSION}`, {
@@ -983,8 +995,10 @@ export class BattleScene extends Phaser.Scene {
 
   private onPointerDown = (pointer: Phaser.Input.Pointer): void => {
     if (this.busy || !this.battle.acceptsInput || this.potionMode) return;
+    if (this.time.now < this.ignoreBoardInputUntil) return;
     const cell = this.pointerToCell(pointer.worldX, pointer.worldY);
     if (!cell) return;
+    this.boardPointerArmed = true;
     this.dragStart = cell;
     this.setPressedCell(cell);
     this.audio.sfx("gem_select");
@@ -992,6 +1006,12 @@ export class BattleScene extends Phaser.Scene {
 
   private onPointerUp = (pointer: Phaser.Input.Pointer): void => {
     if (this.busy || !this.battle.acceptsInput || this.potionMode) return;
+    // Orphan pointerup from the tap that started this scene — do not auto-select.
+    if (!this.boardPointerArmed) {
+      this.setPressedCell(null);
+      this.dragStart = null;
+      return;
+    }
     this.setPressedCell(null);
     const end = this.pointerToCell(pointer.worldX, pointer.worldY);
     if (!end) {

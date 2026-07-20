@@ -66,8 +66,8 @@ export const MOBILE_BATTLE_LAYOUT: BattleLayoutConfig = {
   partyCardH: 86,
   partyTop: 8,
   partyGap: 6,
-  /** Room for audio row + Potion/Map thumb row. */
-  chromeBottom: 72,
+  /** Room for bottom chrome (audio + Potion/Map on one row). */
+  chromeBottom: 40,
   boardSidePad: 16,
   partyBarsBelow: true,
   enemyScale: 0.92,

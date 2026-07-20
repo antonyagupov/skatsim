@@ -159,7 +159,7 @@ export const ASSET_SPECS = [
     height: 144,
     background: "opaque",
     publicPath: "assets/env/env-worldmap.png",
-    prompt: `${STYLE_FOUNDATION}. Original 16-bit fantasy JRPG pixel-art world map environment sample, top-down or slight isometric hills paths forest and a small settlement marker, limited green earth and sky palette, modular tileset feel, no text, no watermark, readable at small scale.`,
+    prompt: `${STYLE_FOUNDATION}. Original 16-bit fantasy JRPG pixel-art world map environment, top-down slight isometric, serpentine dirt road left-right zigzags across quiet grass fields, sparse tree clumps only at far edges, one small village near LEFT, one cave mouth mid-right, one stone fortress mid-right, foggy marsh and ruined bridge in the LOWER band, ominous distant keep silhouette far RIGHT, broad empty grassy quiet zones for UI markers, limited green earth and sky palette, modular tileset feel, no text, no watermark, no UI, readable landmarks only.`,
   },
   {
     id: "env-village",
@@ -259,7 +259,7 @@ export const ASSET_SPECS = [
     height: 760,
     background: "opaque",
     publicPath: "assets/env/env-worldmap-mobile.png",
-    prompt: `${STYLE_FOUNDATION}. Original 16-bit fantasy JRPG pixel-art PORTRAIT world map (tall phone), top-down slight isometric, winding path from a village marker near the TOP down through forest hills quarry cave to a fortress near the BOTTOM, secondary marsh path branching left, limited green earth and sky palette, modular tileset feel, no text, no watermark, composed for 420x760`,
+    prompt: `${STYLE_FOUNDATION}. Original 16-bit fantasy JRPG pixel-art PORTRAIT world map (tall phone 420x760), top-down slight isometric SERPENTINE progression path: village near TOP-CENTER, path zigzags LEFT then RIGHT down through quiet grass, forest edge, quarry, cave mid-right, GOBLIN FORTRESS mid-center as chapter-1 climax, then a clear terrain transition (river fog or stone gate band), then marsh LEFT, ruined bridge RIGHT, watchtower lower-left, ominous HOLLOW KEEP bottom-right finale. Broad quiet grassy fields behind UI, sparse trees only at edges, ONE cave landmark, ONE fortress, ONE marsh/bridge, ONE final keep. Road painted to match vertical serpentine. Limited green earth sky palette, modular tileset feel, no text, no watermark, no UI, composed for 420x760`,
   },
   {
     id: "env-village-mobile",

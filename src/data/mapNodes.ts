@@ -1,6 +1,11 @@
 import type { SaveData } from "../data/save";
 import { rewardPreview } from "../systems/economy/rewards";
 import type { ElementId } from "../systems/combat/elements";
+import {
+  DESKTOP_MAP_LAYOUT,
+  MOBILE_MAP_LAYOUT,
+  getMapNodeLayout,
+} from "./mapLayout";
 
 export type MapNodeKind = "battle" | "village" | "hub" | "ending";
 
@@ -26,16 +31,24 @@ export type MapNodeDef = {
   objectivePreview?: string;
 };
 
-/** Chapter 1 world graph — five sequential battles + Village hub. */
+function layoutCoords(id: string): {
+  x: number;
+  y: number;
+  xMobile: number;
+  yMobile: number;
+} {
+  const d = DESKTOP_MAP_LAYOUT.find((l) => l.id === id)!;
+  const m = MOBILE_MAP_LAYOUT.find((l) => l.id === id)!;
+  return { x: d.x, y: d.y, xMobile: m.x, yMobile: m.y };
+}
+
+/** Chapter 1 world graph — five sequential battles + Village hub + Chapter 2. */
 export const MAP_NODES: MapNodeDef[] = [
   {
     id: "village",
     label: "Village",
     kind: "village",
-    x: 0.18,
-    y: 0.48,
-    xMobile: 0.5,
-    yMobile: 0.16,
+    ...layoutCoords("village"),
     sceneKey: "Village",
     alwaysUnlocked: true,
     color: 0xc8a060,
@@ -44,10 +57,7 @@ export const MAP_NODES: MapNodeDef[] = [
     id: "ruins-path",
     label: "Ruins Path",
     kind: "battle",
-    x: 0.34,
-    y: 0.62,
-    xMobile: 0.42,
-    yMobile: 0.24,
+    ...layoutCoords("ruins-path"),
     sceneKey: "Battle",
     encounterId: "ruins",
     alwaysUnlocked: true,
@@ -60,10 +70,7 @@ export const MAP_NODES: MapNodeDef[] = [
     id: "forest-trail",
     label: "Forest Trail",
     kind: "battle",
-    x: 0.48,
-    y: 0.42,
-    xMobile: 0.58,
-    yMobile: 0.36,
+    ...layoutCoords("forest-trail"),
     sceneKey: "Battle",
     encounterId: "forest",
     requires: ["firstNodeCompleted"],
@@ -76,10 +83,7 @@ export const MAP_NODES: MapNodeDef[] = [
     id: "old-quarry",
     label: "Old Quarry",
     kind: "battle",
-    x: 0.62,
-    y: 0.58,
-    xMobile: 0.4,
-    yMobile: 0.48,
+    ...layoutCoords("old-quarry"),
     sceneKey: "Battle",
     encounterId: "quarry",
     requires: ["forestNodeCompleted"],
@@ -92,10 +96,7 @@ export const MAP_NODES: MapNodeDef[] = [
     id: "dark-cave",
     label: "Dark Cave",
     kind: "battle",
-    x: 0.74,
-    y: 0.38,
-    xMobile: 0.6,
-    yMobile: 0.6,
+    ...layoutCoords("dark-cave"),
     sceneKey: "Battle",
     encounterId: "cave",
     requires: ["quarryNodeCompleted"],
@@ -108,10 +109,7 @@ export const MAP_NODES: MapNodeDef[] = [
     id: "goblin-fortress",
     label: "Goblin Fortress",
     kind: "battle",
-    x: 0.86,
-    y: 0.55,
-    xMobile: 0.72,
-    yMobile: 0.74,
+    ...layoutCoords("goblin-fortress"),
     sceneKey: "Battle",
     encounterId: "fortress",
     requires: ["caveNodeCompleted"],
@@ -125,10 +123,7 @@ export const MAP_NODES: MapNodeDef[] = [
     id: "marsh-crossing",
     label: "Marsh Crossing",
     kind: "battle",
-    x: 0.28,
-    y: 0.28,
-    xMobile: 0.22,
-    yMobile: 0.28,
+    ...layoutCoords("marsh-crossing"),
     sceneKey: "Battle",
     encounterId: "marsh",
     requires: ["chapter2Unlocked"],
@@ -141,10 +136,7 @@ export const MAP_NODES: MapNodeDef[] = [
     id: "ruined-bridge",
     label: "Ruined Bridge",
     kind: "battle",
-    x: 0.44,
-    y: 0.22,
-    xMobile: 0.2,
-    yMobile: 0.42,
+    ...layoutCoords("ruined-bridge"),
     sceneKey: "Battle",
     encounterId: "bridge",
     requires: ["marshNodeCompleted"],
@@ -157,10 +149,7 @@ export const MAP_NODES: MapNodeDef[] = [
     id: "watchtower",
     label: "Watchtower",
     kind: "battle",
-    x: 0.6,
-    y: 0.18,
-    xMobile: 0.28,
-    yMobile: 0.55,
+    ...layoutCoords("watchtower"),
     sceneKey: "Battle",
     encounterId: "watchtower",
     requires: ["bridgeNodeCompleted"],
@@ -174,10 +163,7 @@ export const MAP_NODES: MapNodeDef[] = [
     id: "hollow-keep",
     label: "Hollow Keep",
     kind: "ending",
-    x: 0.76,
-    y: 0.14,
-    xMobile: 0.78,
-    yMobile: 0.82,
+    ...layoutCoords("hollow-keep"),
     sceneKey: "Ending",
     requires: ["watchtowerNodeCompleted"],
     color: 0x4060a0,
@@ -191,6 +177,8 @@ export function nodeMapPos(
   node: MapNodeDef,
   mobile: boolean,
 ): { x: number; y: number } {
+  const layout = getMapNodeLayout(node.id, mobile);
+  if (layout) return { x: layout.x, y: layout.y };
   if (mobile) {
     return {
       x: node.xMobile ?? node.x,
@@ -199,7 +187,9 @@ export function nodeMapPos(
   }
   return { x: node.x, y: node.y };
 }
-export const MAP_EDGES: Array<[string, string]> = [
+
+/** Desktop landscape: Ch2 branches from Village. */
+export const MAP_EDGES_DESKTOP: Array<[string, string]> = [
   ["village", "ruins-path"],
   ["ruins-path", "forest-trail"],
   ["forest-trail", "old-quarry"],
@@ -211,6 +201,26 @@ export const MAP_EDGES: Array<[string, string]> = [
   ["watchtower", "hollow-keep"],
 ];
 
+/** Mobile serpentine: Ch2 continues from Fortress. */
+export const MAP_EDGES_MOBILE: Array<[string, string]> = [
+  ["village", "ruins-path"],
+  ["ruins-path", "forest-trail"],
+  ["forest-trail", "old-quarry"],
+  ["old-quarry", "dark-cave"],
+  ["dark-cave", "goblin-fortress"],
+  ["goblin-fortress", "marsh-crossing"],
+  ["marsh-crossing", "ruined-bridge"],
+  ["ruined-bridge", "watchtower"],
+  ["watchtower", "hollow-keep"],
+];
+
+export function mapEdges(mobile: boolean): Array<[string, string]> {
+  return mobile ? MAP_EDGES_MOBILE : MAP_EDGES_DESKTOP;
+}
+
+/** @deprecated Prefer mapEdges(mobile). Defaults to desktop topology. */
+export const MAP_EDGES = MAP_EDGES_DESKTOP;
+
 export function isNodeUnlocked(node: MapNodeDef, save: SaveData): boolean {
   if (node.alwaysUnlocked) return true;
   if (!node.requires || node.requires.length === 0) return true;
@@ -220,6 +230,12 @@ export function isNodeUnlocked(node: MapNodeDef, save: SaveData): boolean {
 export function isNodeCompleted(node: MapNodeDef, save: SaveData): boolean {
   if (!node.completedFlag) return false;
   return Boolean(save[node.completedFlag]);
+}
+
+/** Village hub counts as visited for path coloring. */
+export function isNodeVisited(node: MapNodeDef, save: SaveData): boolean {
+  if (node.kind === "village") return true;
+  return isNodeCompleted(node, save);
 }
 
 export function nodeRewardPreview(node: MapNodeDef) {
