@@ -840,7 +840,7 @@ export class BattleController {
     if (heroId === "hero-warrior") {
       this.ensureTarget();
       const tid = this.selectedEnemyId;
-      const target = enemies.find((e) => e.id === tid);
+      const target = enemies.find((e) => e.id === tid && e.alive);
       if (target) {
         const gem = HERO_DEFS[heroId] ? ("gem-flame" as GemId) : "gem-flame";
         const affinity = affinityForAttack(gem, target);

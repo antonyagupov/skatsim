@@ -17,11 +17,14 @@ import {
 } from "../systems/combat/progression";
 import { markTutorialStep, nextPendingStep, TUTORIAL_COPY } from "../systems/tutorial/TutorialManager";
 import { addAudioControls } from "../ui/AudioControls";
+import { pickLayoutProfile } from "../ui/layoutProfile";
+import { addSceneBackground } from "../ui/sceneArt";
 
 export class VillageScene extends Phaser.Scene {
   private panel!: Phaser.GameObjects.Container;
   private goldText!: Phaser.GameObjects.Text;
   private matText!: Phaser.GameObjects.Text;
+  private mobile = false;
 
   constructor() {
     super("Village");
@@ -41,50 +44,52 @@ export class VillageScene extends Phaser.Scene {
     }
 
     const { width, height } = this.scale;
-    if (this.textures.exists("env-village")) {
-      this.add.image(width / 2, height / 2, "env-village").setDisplaySize(width, height);
-    } else {
+    this.mobile = pickLayoutProfile(width, height) === "mobile";
+
+    if (!addSceneBackground(this, "env-village")) {
       this.add.rectangle(width / 2, height / 2, width, height, 0x6a5a40);
     }
 
     this.add.rectangle(width / 2, 36, width, 56, 0x0c0a12, 0.72);
     this.add
-      .text(24, 28, "Village", {
+      .text(this.mobile ? 16 : 24, 28, "Village", {
         fontFamily: "Cinzel, Palatino, serif",
-        fontSize: "24px",
+        fontSize: this.mobile ? "20px" : "24px",
         color: "#f2e9d8",
       })
       .setOrigin(0, 0.5);
 
+    const goldX = this.mobile ? width * 0.42 : width / 2 - 20;
+    const matX = this.mobile ? width * 0.68 : width / 2 + 90;
     this.goldText = this.add
-      .text(width / 2 - 20, 28, "", {
+      .text(goldX, 28, "", {
         fontFamily: "monospace",
-        fontSize: "14px",
+        fontSize: this.mobile ? "13px" : "14px",
         color: "#f0c050",
       })
       .setOrigin(0, 0.5);
     this.matText = this.add
-      .text(width / 2 + 90, 28, "", {
+      .text(matX, 28, "", {
         fontFamily: "monospace",
-        fontSize: "14px",
+        fontSize: this.mobile ? "13px" : "14px",
         color: "#a0c8e0",
       })
       .setOrigin(0, 0.5);
 
     if (this.textures.exists("icon-gold")) {
-      this.add.image(width / 2 - 40, 28, "icon-gold").setDisplaySize(22, 22);
+      this.add.image(goldX - 20, 28, "icon-gold").setDisplaySize(22, 22);
     }
     if (this.textures.exists("icon-materials")) {
-      this.add.image(width / 2 + 70, 28, "icon-materials").setDisplaySize(22, 22);
+      this.add.image(matX - 20, 28, "icon-materials").setDisplaySize(22, 22);
     }
 
     const back = this.add
-      .text(width - 24, 28, "← Map", {
+      .text(width - (this.mobile ? 12 : 24), 28, "← Map", {
         fontFamily: "monospace",
-        fontSize: "15px",
+        fontSize: this.mobile ? "14px" : "15px",
         color: "#1a1008",
         backgroundColor: "#c8b090",
-        padding: { x: 10, y: 6 },
+        padding: { x: this.mobile ? 8 : 10, y: 6 },
       })
       .setOrigin(1, 0.5)
       .setInteractive({ useHandCursor: true });
@@ -112,20 +117,27 @@ export class VillageScene extends Phaser.Scene {
       workshop: "facility-workshop",
     };
 
-    // Facility buildings with visual level states
+    const cardW = this.mobile ? width - 32 : 150;
+    const cardH = this.mobile ? 110 : 130;
+
     FACILITIES.forEach((fac, i) => {
-      const x = width * (0.22 + i * 0.28);
-      const y = height * 0.4;
+      const x = this.mobile ? width / 2 : width * (0.22 + i * 0.28);
+      const y = this.mobile
+        ? 100 + i * (cardH + 14) + cardH / 2
+        : height * 0.4;
       const level = save.buildingLevels[fac.id];
       const body = this.add
-        .rectangle(x, y, 150, 130, level >= 2 ? 0x3a4a38 : 0x2a2830)
+        .rectangle(x, y, cardW, cardH, level >= 2 ? 0x3a4a38 : 0x2a2830)
         .setStrokeStyle(2, level >= 2 ? 0xf0c050 : 0x6a6058);
       this.panel.add(body);
 
       const iconKey = facilityIcon[fac.id];
+      const iconSize = this.mobile ? 56 : 72;
       if (iconKey && this.textures.exists(iconKey)) {
         this.panel.add(
-          this.add.image(x, y - 8, iconKey).setDisplaySize(72, 72),
+          this.add
+            .image(this.mobile ? x - cardW / 2 + 48 : x, y - 8, iconKey)
+            .setDisplaySize(iconSize, iconSize),
         );
       } else if (fac.id === "mine") {
         this.panel.add(this.add.rectangle(x - 40, y + 20, 24, 36, 0x5a5040));
@@ -149,28 +161,36 @@ export class VillageScene extends Phaser.Scene {
 
       if (fac.id === "training" && this.textures.exists("icon-warriors")) {
         this.panel.add(
-          this.add.image(x + 48, y + 36, "icon-warriors").setDisplaySize(28, 28),
+          this.add
+            .image(
+              this.mobile ? x + cardW / 2 - 36 : x + 48,
+              y + (this.mobile ? 28 : 36),
+              "icon-warriors",
+            )
+            .setDisplaySize(28, 28),
         );
       }
 
+      const labelX = this.mobile ? x - cardW / 2 + 100 : x;
+      const labelOrigin = this.mobile ? 0 : 0.5;
       this.panel.add(
         this.add
-          .text(x, y - 48, `${fac.name}`, {
+          .text(labelX, this.mobile ? y - 22 : y - 48, `${fac.name}`, {
             fontFamily: "monospace",
-            fontSize: "12px",
+            fontSize: this.mobile ? "14px" : "12px",
             color: "#f2e9d8",
           })
-          .setOrigin(0.5)
+          .setOrigin(labelOrigin, 0.5)
           .setShadow(1, 1, "#0a0810", 2, false, true),
       );
       this.panel.add(
         this.add
-          .text(x, y + 58, `Lv ${level}/${MAX_BUILDING_LEVEL}`, {
+          .text(labelX, this.mobile ? y + 4 : y + 58, `Lv ${level}/${MAX_BUILDING_LEVEL}`, {
             fontFamily: "monospace",
             fontSize: "11px",
             color: "#a89888",
           })
-          .setOrigin(0.5),
+          .setOrigin(labelOrigin, 0.5),
       );
 
       body.setInteractive({ useHandCursor: true });
@@ -180,12 +200,11 @@ export class VillageScene extends Phaser.Scene {
       });
     });
 
-    // Bottom help
     this.panel.add(
       this.add
-        .text(width / 2, height - 28, "Select a facility to upgrade or train", {
+        .text(width / 2, height - (this.mobile ? 36 : 28), "Select a facility to upgrade or train", {
           fontFamily: "monospace",
-          fontSize: "12px",
+          fontSize: this.mobile ? "11px" : "12px",
           color: "#c8b8a0",
         })
         .setOrigin(0.5),
@@ -201,12 +220,17 @@ export class VillageScene extends Phaser.Scene {
       .rectangle(width / 2, height / 2, width, height, 0x000000, 0.55)
       .setInteractive();
     overlay.add(backdrop);
+
+    const boxW = this.mobile ? width - 24 : 420;
+    const boxH = this.mobile ? Math.min(height - 80, 520) : 360;
+    const boxCy = this.mobile ? height - boxH / 2 - 24 : height / 2;
     const box = this.add
-      .rectangle(width / 2, height / 2, 420, 360, 0x1a1520)
+      .rectangle(width / 2, boxCy, boxW, boxH, 0x1a1520)
       .setStrokeStyle(2, 0xf0c050)
       .setInteractive();
     overlay.add(box);
 
+    const topY = boxCy - boxH / 2 + 28;
     const fac = FACILITIES.find((f) => f.id === id)!;
     const level = save.buildingLevels[id];
     const facilityIcon: Record<string, string> = {
@@ -217,31 +241,31 @@ export class VillageScene extends Phaser.Scene {
     const iconKey = facilityIcon[id];
     if (iconKey && this.textures.exists(iconKey)) {
       overlay.add(
-        this.add.image(width / 2 - 160, height / 2 - 150, iconKey).setDisplaySize(40, 40),
+        this.add.image(width / 2 - boxW / 2 + 36, topY, iconKey).setDisplaySize(40, 40),
       );
     }
     if (id === "training" && this.textures.exists("icon-warriors")) {
       overlay.add(
-        this.add.image(width / 2 + 150, height / 2 - 150, "icon-warriors").setDisplaySize(36, 36),
+        this.add.image(width / 2 + boxW / 2 - 36, topY, "icon-warriors").setDisplaySize(36, 36),
       );
     }
     overlay.add(
       this.add
-        .text(width / 2, height / 2 - 150, fac.name, {
+        .text(width / 2, topY, fac.name, {
           fontFamily: "monospace",
-          fontSize: "20px",
+          fontSize: this.mobile ? "18px" : "20px",
           color: "#f2e9d8",
         })
         .setOrigin(0.5),
     );
     overlay.add(
       this.add
-        .text(width / 2, height / 2 - 120, fac.description, {
+        .text(width / 2, topY + 32, fac.description, {
           fontFamily: "monospace",
           fontSize: "12px",
           color: "#a89888",
           align: "center",
-          wordWrap: { width: 360 },
+          wordWrap: { width: boxW - 40 },
         })
         .setOrigin(0.5),
     );
@@ -253,13 +277,12 @@ export class VillageScene extends Phaser.Scene {
     };
 
     backdrop.on("pointerdown", close);
-    // Clicks on the panel itself should not close the modal.
     box.on("pointerdown", (_pointer: Phaser.Input.Pointer, _lx: number, _ly: number, event: Phaser.Types.Input.EventData) => {
       event.stopPropagation();
     });
 
     const closeBtn = this.add
-      .text(width / 2 + 180, height / 2 - 155, "✕", {
+      .text(width / 2 + boxW / 2 - 24, topY, "✕", {
         fontFamily: "monospace",
         fontSize: "18px",
         color: "#f2e9d8",
@@ -271,17 +294,18 @@ export class VillageScene extends Phaser.Scene {
 
     if (id === "training") {
       HERO_IDS.forEach((hid, i) => {
-        const y = height / 2 - 70 + i * 52;
+        const y = topY + 70 + i * (this.mobile ? 58 : 52);
         const lv = save.heroLevels[hid];
         const cur = scaledHeroStats(hid, lv);
         const next =
           lv < MAX_HERO_LEVEL ? scaledHeroStats(hid, lv + 1) : null;
         const cost = heroUpgradeCost(lv);
+        const leftX = width / 2 - boxW / 2 + 20;
         overlay.add(
           this.add
-            .text(width / 2 - 180, y, `${HERO_DEFS[hid].name} Lv${lv}`, {
+            .text(leftX, y, `${HERO_DEFS[hid].name} Lv${lv}`, {
               fontFamily: "monospace",
-              fontSize: "13px",
+              fontSize: this.mobile ? "12px" : "13px",
               color: "#f2e9d8",
             })
             .setOrigin(0, 0.5),
@@ -289,7 +313,7 @@ export class VillageScene extends Phaser.Scene {
         overlay.add(
           this.add
             .text(
-              width / 2 - 180,
+              leftX,
               y + 16,
               next
                 ? `HP ${cur.maxHp}→${next.maxHp}  DMG ${cur.baseDamage}→${next.baseDamage}`
@@ -304,14 +328,14 @@ export class VillageScene extends Phaser.Scene {
         );
         if (next && cost > 0) {
           const btn = this.add
-            .text(width / 2 + 100, y, `Train ${cost}G`, {
+            .text(width / 2 + boxW / 2 - 20, y, `Train ${cost}G`, {
               fontFamily: "monospace",
-              fontSize: "12px",
+              fontSize: this.mobile ? "11px" : "12px",
               color: save.gold >= cost ? "#1a1008" : "#666",
               backgroundColor: save.gold >= cost ? "#d06a2e" : "#444",
               padding: { x: 8, y: 4 },
             })
-            .setOrigin(0.5)
+            .setOrigin(1, 0.5)
             .setInteractive({ useHandCursor: save.gold >= cost });
           btn.on("pointerdown", () => {
             const s = loadSave();
@@ -333,7 +357,6 @@ export class VillageScene extends Phaser.Scene {
       return;
     }
 
-    // Mine / Workshop upgrade
     const effect =
       id === "mine"
         ? level >= 2
@@ -345,7 +368,7 @@ export class VillageScene extends Phaser.Scene {
 
     overlay.add(
       this.add
-        .text(width / 2, height / 2 - 40, `Current: Lv ${level}`, {
+        .text(width / 2, boxCy - 20, `Current: Lv ${level}`, {
           fontFamily: "monospace",
           fontSize: "14px",
           color: "#f0c050",
@@ -354,12 +377,12 @@ export class VillageScene extends Phaser.Scene {
     );
     overlay.add(
       this.add
-        .text(width / 2, height / 2, effect, {
+        .text(width / 2, boxCy + 16, effect, {
           fontFamily: "monospace",
           fontSize: "13px",
           color: "#f2e9d8",
           align: "center",
-          wordWrap: { width: 340 },
+          wordWrap: { width: boxW - 40 },
         })
         .setOrigin(0.5),
     );
@@ -371,11 +394,11 @@ export class VillageScene extends Phaser.Scene {
       const btn = this.add
         .text(
           width / 2,
-          height / 2 + 80,
+          boxCy + boxH / 2 - 48,
           `Upgrade ${cost.gold}G + ${cost.materials}M`,
           {
             fontFamily: "monospace",
-            fontSize: "16px",
+            fontSize: this.mobile ? "14px" : "16px",
             color: can ? "#1a1008" : "#666",
             backgroundColor: can ? "#d06a2e" : "#444",
             padding: { x: 16, y: 10 },
@@ -402,7 +425,7 @@ export class VillageScene extends Phaser.Scene {
     } else {
       overlay.add(
         this.add
-          .text(width / 2, height / 2 + 80, "Fully upgraded", {
+          .text(width / 2, boxCy + boxH / 2 - 48, "Fully upgraded", {
             fontFamily: "monospace",
             fontSize: "14px",
             color: "#88c070",

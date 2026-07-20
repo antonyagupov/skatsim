@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { DialogueRunner, type DialogueLine } from "../systems/dialogue/DialogueRunner";
 import { AudioManager } from "../audio/AudioManager";
+import { pickLayoutProfile } from "./layoutProfile";
 
 export type DialogueOverlayOpts = {
   lines: DialogueLine[];
@@ -22,6 +23,7 @@ export function presentDialogueOverlay(
   const audio = AudioManager.get();
   const runner = new DialogueRunner(opts.lines);
   const { width, height } = scene.scale;
+  const mobile = pickLayoutProfile(width, height) === "mobile";
   const root = scene.add.container(0, 0).setDepth(4000);
 
   const dim = scene.add
@@ -32,9 +34,9 @@ export function presentDialogueOverlay(
   if (opts.title) {
     root.add(
       scene.add
-        .text(width / 2, 36, opts.title, {
+        .text(width / 2, mobile ? 28 : 36, opts.title, {
           fontFamily: "Cinzel, Palatino, serif",
-          fontSize: "24px",
+          fontSize: mobile ? "20px" : "24px",
           color: "#f7efdc",
           stroke: "#5f351d",
           strokeThickness: 2,
@@ -43,38 +45,55 @@ export function presentDialogueOverlay(
     );
   }
 
-  const boxH = 168;
-  const boxY = height - boxH / 2 - 28;
+  const boxH = mobile ? 210 : 168;
+  const boxPad = mobile ? 16 : 24;
+  /** Keep Continue/Skip above home-indicator / scene chrome. */
+  const chromeInset = mobile ? 64 : 28;
+  const boxY = height - boxH / 2 - chromeInset;
   root.add(
     scene.add
-      .rectangle(width / 2, boxY, width - 48, boxH, 0x12101a, 0.94)
+      .rectangle(width / 2, boxY, width - boxPad * 2, boxH, 0x12101a, 0.94)
       .setStrokeStyle(2, 0xd4aa62, 0.85),
   );
 
+  const portraitSize = mobile ? 56 : 96;
+  const portraitX = mobile ? boxPad + 12 + portraitSize / 2 : 88;
+  const portraitY = mobile ? boxY - boxH / 2 + 16 + portraitSize / 2 : boxY - 8;
+
   const portraitFrame = scene.add
-    .rectangle(88, boxY - 8, 100, 100, 0x1a1528)
+    .rectangle(portraitX, portraitY, portraitSize + 4, portraitSize + 4, 0x1a1528)
     .setStrokeStyle(2, 0xd4aa62, 0.7);
   root.add(portraitFrame);
 
-  const portrait = scene.add.image(88, boxY - 8, "hero-warrior").setDisplaySize(96, 96);
+  const portrait = scene.add
+    .image(portraitX, portraitY, "hero-warrior")
+    .setDisplaySize(portraitSize, portraitSize);
   root.add(portrait);
 
+  const textLeft = mobile
+    ? portraitX + portraitSize / 2 + 12
+    : 160;
+  const textWrap = mobile ? width - textLeft - boxPad - 8 : width - 220;
+  const nameY = mobile ? boxY - boxH / 2 + 28 : boxY - 58;
+  const bodyY = mobile ? boxY - boxH / 2 + 48 : boxY - 18;
+  const bodyMaxH = mobile ? boxH - 100 : boxH - 80;
+
   const nameText = scene.add
-    .text(160, boxY - 58, "", {
+    .text(textLeft, nameY, "", {
       fontFamily: "monospace",
-      fontSize: "16px",
+      fontSize: mobile ? "14px" : "16px",
       color: "#f0c050",
     })
     .setOrigin(0, 0.5);
   root.add(nameText);
 
   const dialogueText = scene.add
-    .text(160, boxY - 18, "", {
+    .text(textLeft, bodyY, "", {
       fontFamily: "monospace",
-      fontSize: "15px",
+      fontSize: mobile ? "13px" : "15px",
       color: "#f2e9d8",
-      wordWrap: { width: width - 220 },
-      lineSpacing: 6,
+      wordWrap: { width: Math.max(120, textWrap) },
+      lineSpacing: mobile ? 4 : 6,
     })
     .setOrigin(0, 0);
   root.add(dialogueText);
@@ -94,32 +113,36 @@ export function presentDialogueOverlay(
     // Meta voice (???) uses mint cyan — distinct from mage blue / hero gold
     nameText.setText(line.speaker).setColor(isVoice ? "#40ffc0" : "#f0c050");
     dialogueText.setText(line.text).setColor(isVoice ? "#a8ffe0" : "#f2e9d8");
+    if (dialogueText.height > bodyMaxH) {
+      dialogueText.setFontSize(mobile ? "12px" : "14px");
+    }
     if (line.portraitKey && scene.textures.exists(line.portraitKey)) {
-      portrait.setTexture(line.portraitKey).setDisplaySize(96, 96).setVisible(true);
+      portrait.setTexture(line.portraitKey).setDisplaySize(portraitSize, portraitSize).setVisible(true);
       portraitFrame.setVisible(true).setStrokeStyle(2, 0xd4aa62, 0.7);
     } else if (line.portraitKey && scene.textures.exists(line.portraitKey.replace("-portrait", ""))) {
       portrait
         .setTexture(line.portraitKey.replace("-portrait", ""))
-        .setDisplaySize(96, 96)
+        .setDisplaySize(portraitSize, portraitSize)
         .setVisible(true);
       portraitFrame.setVisible(true).setStrokeStyle(2, 0xd4aa62, 0.7);
     } else if (isVoice) {
       portrait.setVisible(false);
       portraitFrame.setVisible(true).setStrokeStyle(2, 0x40ffc0, 0.75);
     } else {
-      portrait.setTexture("hero-warrior").setDisplaySize(96, 96).setVisible(true);
+      portrait.setTexture("hero-warrior").setDisplaySize(portraitSize, portraitSize).setVisible(true);
       portraitFrame.setVisible(true).setStrokeStyle(2, 0xd4aa62, 0.7);
     }
     audio.sfx(isVoice ? "countdown_warn" : "ui_click");
   };
 
+  const btnY = boxY + boxH / 2 - (mobile ? 36 : 32);
   const continueBtn = scene.add
-    .text(width - 56, boxY + 52, "Continue ▶", {
+    .text(width - boxPad - 8, btnY, "Continue ▶", {
       fontFamily: "monospace",
-      fontSize: "14px",
+      fontSize: mobile ? "15px" : "14px",
       color: "#1a1008",
       backgroundColor: "#d06a2e",
-      padding: { x: 12, y: 8 },
+      padding: { x: mobile ? 14 : 12, y: mobile ? 10 : 8 },
     })
     .setOrigin(1, 0.5)
     .setInteractive({ useHandCursor: true });
@@ -136,12 +159,12 @@ export function presentDialogueOverlay(
   root.add(continueBtn);
 
   const skipBtn = scene.add
-    .text(56, boxY + 52, "Skip", {
+    .text(boxPad + 8, btnY, "Skip", {
       fontFamily: "monospace",
-      fontSize: "13px",
+      fontSize: mobile ? "14px" : "13px",
       color: "#c8b090",
       backgroundColor: "#2a2238",
-      padding: { x: 10, y: 6 },
+      padding: { x: mobile ? 12 : 10, y: mobile ? 8 : 6 },
     })
     .setOrigin(0, 0.5)
     .setInteractive({ useHandCursor: true });

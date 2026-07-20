@@ -4,7 +4,7 @@
  * Game remains runnable without any paid image API.
  */
 
-import { mkdirSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
@@ -205,6 +205,40 @@ function drawVillage(rgba, w, h) {
   fillCircle(rgba, w, w * 0.9, h * 0.3, 6, 255, 120, 40);
 }
 
+/** Portrait village: three facilities stacked top → bottom. */
+function drawVillageMobile(rgba, w, h) {
+  fillRect(rgba, w, 0, 0, w, Math.floor(h * 0.22), 180, 200, 230);
+  fillRect(rgba, w, 0, Math.floor(h * 0.18), w, Math.floor(h * 0.82), 140, 110, 70);
+  // Mine (top)
+  fillRect(rgba, w, Math.floor(w * 0.2), Math.floor(h * 0.2), Math.floor(w * 0.6), Math.floor(h * 0.16), 90, 85, 75);
+  fillRect(rgba, w, Math.floor(w * 0.35), Math.floor(h * 0.24), Math.floor(w * 0.3), Math.floor(h * 0.1), 40, 40, 45);
+  // Training (middle)
+  fillRect(rgba, w, Math.floor(w * 0.15), Math.floor(h * 0.48), Math.floor(w * 0.7), 8, 160, 120, 80);
+  fillRect(rgba, w, Math.floor(w * 0.28), Math.floor(h * 0.4), 10, Math.floor(h * 0.1), 180, 150, 100);
+  fillRect(rgba, w, Math.floor(w * 0.68), Math.floor(h * 0.4), 10, Math.floor(h * 0.1), 180, 150, 100);
+  // Workshop (bottom)
+  fillRect(rgba, w, Math.floor(w * 0.2), Math.floor(h * 0.62), Math.floor(w * 0.6), Math.floor(h * 0.18), 160, 120, 80);
+  fillRect(rgba, w, Math.floor(w * 0.2), Math.floor(h * 0.58), Math.floor(w * 0.6), 14, 120, 60, 40);
+  fillCircle(rgba, w, Math.floor(w * 0.72), Math.floor(h * 0.6), 8, 255, 120, 40);
+}
+
+/** Portrait world map: vertical path top → bottom. */
+function drawWorldMobile(rgba, w, h) {
+  fillRect(rgba, w, 0, 0, w, h, 90, 160, 220);
+  fillRect(rgba, w, 0, Math.floor(h * 0.12), w, Math.floor(h * 0.88), 70, 140, 70);
+  // Main winding path
+  fillRect(rgba, w, Math.floor(w * 0.42), Math.floor(h * 0.1), 14, Math.floor(h * 0.72), 160, 130, 70);
+  fillRect(rgba, w, Math.floor(w * 0.3), Math.floor(h * 0.28), Math.floor(w * 0.35), 10, 160, 130, 70);
+  fillRect(rgba, w, Math.floor(w * 0.3), Math.floor(h * 0.48), Math.floor(w * 0.4), 10, 160, 130, 70);
+  // Village marker (top)
+  fillRect(rgba, w, Math.floor(w * 0.38), Math.floor(h * 0.1), 24, 20, 180, 140, 80);
+  // Forest clumps
+  fillCircle(rgba, w, Math.floor(w * 0.7), Math.floor(h * 0.36), 22, 50, 120, 50);
+  fillCircle(rgba, w, Math.floor(w * 0.25), Math.floor(h * 0.5), 18, 45, 110, 45);
+  // Fortress (bottom)
+  fillRect(rgba, w, Math.floor(w * 0.35), Math.floor(h * 0.72), Math.floor(w * 0.3), 28, 100, 50, 40);
+}
+
 function drawBossArena(rgba, w, h) {
   for (let y = 0; y < h; y++) {
     const t = y / h;
@@ -228,10 +262,18 @@ function paintAsset(spec) {
   if (spec.background === "opaque") {
     fillRect(rgba, w, 0, 0, w, h, 30, 30, 40);
   }
-  if (id === "battle-screen-ref") drawBattleRef(rgba, w, h);
-  else if (id === "splash-bg" || id === "splash-match3" || id === "ending-party") drawBattleRef(rgba, w, h);
-  else if (id === "env-hollow-keep") drawBossArena(rgba, w, h);
-  else if (id === "battle-boss-bg") drawBossArena(rgba, w, h);
+  if (id === "battle-screen-ref" || id === "battle-screen-ref-mobile") drawBattleRef(rgba, w, h);
+  else if (
+    id === "splash-bg" ||
+    id === "splash-match3" ||
+    id === "ending-party" ||
+    id === "splash-bg-mobile" ||
+    id === "splash-match3-mobile" ||
+    id === "ending-party-mobile"
+  )
+    drawBattleRef(rgba, w, h);
+  else if (id === "env-hollow-keep" || id === "env-hollow-keep-mobile") drawBossArena(rgba, w, h);
+  else if (id === "battle-boss-bg" || id === "battle-boss-bg-mobile") drawBossArena(rgba, w, h);
   else if (id.startsWith("hero-")) {
     const map = {
       "hero-warrior": [200, 60, 50],
@@ -259,7 +301,9 @@ function paintAsset(spec) {
       }
     }
   } else if (id === "env-worldmap") drawWorld(rgba, w, h);
+  else if (id === "env-worldmap-mobile") drawWorldMobile(rgba, w, h);
   else if (id === "env-village") drawVillage(rgba, w, h);
+  else if (id === "env-village-mobile") drawVillageMobile(rgba, w, h);
   else {
     const [r, g, b] = accent(id);
     fillRect(rgba, w, 8, 8, w - 16, h - 16, r, g, b);
@@ -355,7 +399,18 @@ export function generatePlaceholders(existingSources = {}) {
 
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 if (isMain) {
-  const sources = generatePlaceholders();
+  /** @type {Record<string, string>} */
+  const existing = {};
+  const manifestPath = join(PUBLIC, "assets/manifest.json");
+  if (existsSync(manifestPath)) {
+    const m = JSON.parse(readFileSync(manifestPath, "utf8"));
+    for (const [id, meta] of Object.entries(m)) {
+      if (meta && typeof meta === "object" && "source" in meta && typeof meta.source === "string") {
+        existing[id] = meta.source;
+      }
+    }
+  }
+  const sources = generatePlaceholders(existing);
   console.log(`Wrote procedural placeholders for ${Object.keys(sources).length} assets.`);
   console.log("Manifest: public/assets/manifest.json");
 }

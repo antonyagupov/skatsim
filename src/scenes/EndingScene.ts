@@ -3,6 +3,7 @@ import { AudioManager } from "../audio/AudioManager";
 import { resetSave, updateSave } from "../data/save";
 import { addAudioControls } from "../ui/AudioControls";
 import { presentDialogueOverlay } from "../ui/DialogueOverlay";
+import { addSceneBackground } from "../ui/sceneArt";
 import type { DialogueLine } from "../systems/dialogue/DialogueRunner";
 
 const ENDING_LINES: DialogueLine[] = [
@@ -90,11 +91,10 @@ export class EndingScene extends Phaser.Scene {
     const { width, height } = this.scale;
     void this.audio.unlock().then(() => this.audio.playTrack("ending"));
 
-    if (this.textures.exists("env-hollow-keep")) {
-      this.add.image(width / 2, height / 2, "env-hollow-keep").setDisplaySize(width, height);
-    } else if (this.textures.exists("battle-boss-bg")) {
-      this.add.image(width / 2, height / 2, "battle-boss-bg").setDisplaySize(width, height);
-    } else {
+    if (
+      !addSceneBackground(this, "env-hollow-keep") &&
+      !addSceneBackground(this, "battle-boss-bg")
+    ) {
       this.add.rectangle(width / 2, height / 2, width, height, 0x101828);
     }
 
@@ -128,22 +128,22 @@ export class EndingScene extends Phaser.Scene {
     });
 
     this.children.removeAll(true);
-    if (this.textures.exists("ending-party")) {
-      this.add.image(width / 2, height / 2, "ending-party").setDisplaySize(width, height);
-      this.add
-        .text(width / 2, height - 48, "…and so it begins again.", {
-          fontFamily: "monospace",
-          fontSize: "16px",
-          color: "#c8d8f0",
-        })
-        .setOrigin(0.5);
-    } else {
+    const hasParty = Boolean(addSceneBackground(this, "ending-party"));
+    if (!hasParty) {
       this.add.rectangle(width / 2, height / 2, width, height, 0x060814);
       this.add
         .text(width / 2, height / 2, "Memory wiped.", {
           fontFamily: "monospace",
           fontSize: "20px",
           color: "#40ffc0",
+        })
+        .setOrigin(0.5);
+    } else {
+      this.add
+        .text(width / 2, height - 48, "…and so it begins again.", {
+          fontFamily: "monospace",
+          fontSize: "16px",
+          color: "#c8d8f0",
         })
         .setOrigin(0.5);
     }

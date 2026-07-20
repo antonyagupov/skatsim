@@ -1,5 +1,7 @@
 import Phaser from "phaser";
 import type { AssetManifest } from "../assets/types";
+import { pickLayoutProfile } from "../ui/layoutProfile";
+import { addSceneBackground } from "../ui/sceneArt";
 
 /** Resolve absolute `/assets/...` paths against Vite `base` (GitHub Pages). */
 function assetUrl(path: string): string {
@@ -60,15 +62,12 @@ export class PreloadScene extends Phaser.Scene {
   private showSplash(): void {
     const { width, height } = this.scale;
     this.children.removeAll(true);
+    const mobile = pickLayoutProfile(width, height) === "mobile";
 
-    const splashKey = this.textures.exists("splash-match3")
-      ? "splash-match3"
-      : this.textures.exists("splash-bg")
-        ? "splash-bg"
-        : null;
-    if (splashKey) {
-      this.add.image(width / 2, height / 2, splashKey).setDisplaySize(width, height);
-    } else {
+    if (
+      !addSceneBackground(this, "splash-match3") &&
+      !addSceneBackground(this, "splash-bg")
+    ) {
       this.add.rectangle(width / 2, height / 2, width, height, 0x14101a);
     }
 
@@ -76,19 +75,22 @@ export class PreloadScene extends Phaser.Scene {
     shade.fillGradientStyle(0x08060d, 0x08060d, 0x08060d, 0x08060d, 0.58, 0.58, 0.08, 0.08);
     shade.fillRect(0, 0, width, height);
 
+    const titleSize = mobile ? "42px" : "68px";
+    const titleY = mobile ? height * 0.2 : height * 0.24;
+
     this.add
-      .text(width / 2 + 3, height * 0.24 + 4, "SKATSIM", {
+      .text(width / 2 + 3, titleY + 4, "SKATSIM", {
         fontFamily: "Cinzel, Palatino, serif",
-        fontSize: "68px",
+        fontSize: titleSize,
         color: "#09060d",
       })
       .setOrigin(0.5)
       .setAlpha(0.7);
 
     this.add
-      .text(width / 2, height * 0.24, "SKATSIM", {
+      .text(width / 2, titleY, "SKATSIM", {
         fontFamily: "Cinzel, Palatino, serif",
-        fontSize: "68px",
+        fontSize: titleSize,
         color: "#f7efdc",
         stroke: "#5f351d",
         strokeThickness: 2,
@@ -96,9 +98,9 @@ export class PreloadScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.add
-      .text(width / 2, height * 0.32, "A MATCH-3 FANTASY", {
+      .text(width / 2, titleY + (mobile ? 42 : 58), "A MATCH-3 FANTASY", {
         fontFamily: "monospace",
-        fontSize: "13px",
+        fontSize: mobile ? "11px" : "13px",
         color: "#e6c78e",
       })
       .setLetterSpacing(5)

@@ -13,7 +13,7 @@ npm run dev
 
 Open the local URL → **Play** (unlocks audio) → World Map.
 
-On a phone (portrait), the game boots a taller canvas and a vertical battle layout; desktop stays 960×720 side-by-side.
+On a phone (portrait), the game boots a taller canvas (420×760) and a vertical battle layout; desktop stays 960×720 side-by-side. Full-bleed scenes load dedicated `*-mobile` portrait arts when available.
 
 **Live:** https://antonyagupov.github.io/skatsim/  
 Repo: https://github.com/antonyagupov/skatsim (site is served from the `gh-pages` branch)

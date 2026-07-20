@@ -5,12 +5,14 @@ import {
   MAP_NODES,
   isNodeCompleted,
   isNodeUnlocked,
+  nodeMapPos,
   nodeRewardPreview,
 } from "../data/mapNodes";
 import { loadSave, resetSave } from "../data/save";
 import { elementColor } from "../systems/combat/elements";
 import { addAudioControls } from "../ui/AudioControls";
 import { pickLayoutProfile } from "../ui/layoutProfile";
+import { addSceneBackground } from "../ui/sceneArt";
 
 export class WorldScene extends Phaser.Scene {
   constructor() {
@@ -24,12 +26,7 @@ export class WorldScene extends Phaser.Scene {
     const { width, height } = this.scale;
     const mobile = pickLayoutProfile(width, height) === "mobile";
 
-    if (this.textures.exists("env-worldmap")) {
-      this.add
-        .image(width / 2, height / 2, "env-worldmap")
-        .setDisplaySize(width, height)
-        .setAlpha(0.95);
-    } else {
+    if (!addSceneBackground(this, "env-worldmap", { alpha: 0.95 })) {
       this.add.rectangle(width / 2, height / 2, width, height, 0x2a5040);
     }
 
@@ -89,12 +86,15 @@ export class WorldScene extends Phaser.Scene {
       const a = byId.get(fromId);
       const b = byId.get(toId);
       if (!a || !b) continue;
-      g.lineBetween(a.x * width, a.y * height, b.x * width, b.y * height);
+      const ap = nodeMapPos(a, mobile);
+      const bp = nodeMapPos(b, mobile);
+      g.lineBetween(ap.x * width, ap.y * height, bp.x * width, bp.y * height);
     }
 
     for (const node of MAP_NODES) {
-      const nx = node.x * width;
-      const ny = node.y * height;
+      const pos = nodeMapPos(node, mobile);
+      const nx = pos.x * width;
+      const ny = pos.y * height;
       const unlocked = isNodeUnlocked(node, save);
       const completed = isNodeCompleted(node, save);
       const locked = !unlocked;
@@ -122,8 +122,9 @@ export class WorldScene extends Phaser.Scene {
 
       const status = completed ? "✓" : locked ? "·" : "►";
       const label = `${status} ${node.label}`;
+      const labelW = Math.min(mobile ? width - 48 : 160, 12 + label.length * 7.2);
       this.add
-        .rectangle(nx, ny + radius + 14, Math.min(160, 12 + label.length * 7.2), 18, 0x0c0a12, 0.62)
+        .rectangle(nx, ny + radius + 14, labelW, 18, 0x0c0a12, 0.62)
         .setStrokeStyle(1, 0x3a3044, 0.5);
       this.add
         .text(nx, ny + radius + 14, label, {
@@ -133,6 +134,7 @@ export class WorldScene extends Phaser.Scene {
         })
         .setOrigin(0.5);
 
+      let stackBottom = ny + radius + 32;
       // Compact preview under label
       if (!locked && (node.kind === "battle" || node.kind === "ending")) {
         const reward = nodeRewardPreview(node);
@@ -163,25 +165,20 @@ export class WorldScene extends Phaser.Scene {
             elementColor(el),
           );
         });
+        stackBottom = ny + radius + 52;
       }
 
       if (unlocked) {
-        const hitR = radius + (mobile ? 12 : 4);
-        circle.setInteractive(
-          new Phaser.Geom.Circle(0, 0, hitR),
-          Phaser.Geom.Circle.Contains,
+        const stackTop = ny - radius - (node.isBoss ? 18 : 6);
+        const hitW = Math.max(
+          radius * 2 + 20,
+          labelW + 16,
+          mobile ? Math.min(labelW + 28, width * 0.34) : 0,
         );
-        if (circle.input) circle.input.cursor = "pointer";
-        if (!completed) {
-          this.tweens.add({
-            targets: circle,
-            scale: 1.1,
-            duration: 700,
-            yoyo: true,
-            repeat: -1,
-          });
-        }
-        circle.on("pointerdown", async () => {
+        const hitH = stackBottom - stackTop + (mobile ? 12 : 8);
+        const hitY = (stackTop + stackBottom) / 2;
+
+        const activateNode = async (): Promise<void> => {
           await audio.unlock();
           audio.sfx("ui_click");
           if (node.sceneKey === "Battle") {
@@ -194,7 +191,25 @@ export class WorldScene extends Phaser.Scene {
           } else if (node.sceneKey === "Village") {
             this.scene.start("Village");
           }
+        };
+
+        // Invisible tap target over circle + label + preview (labels aren't clickable by default).
+        const hitZone = this.add
+          .rectangle(nx, hitY, hitW, hitH, 0xffffff, 0)
+          .setInteractive({ useHandCursor: true });
+        hitZone.on("pointerdown", () => {
+          void activateNode();
         });
+
+        if (!completed) {
+          this.tweens.add({
+            targets: circle,
+            scale: 1.1,
+            duration: 700,
+            yoyo: true,
+            repeat: -1,
+          });
+        }
       }
     }
 

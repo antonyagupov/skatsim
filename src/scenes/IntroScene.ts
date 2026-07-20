@@ -3,6 +3,7 @@ import { AudioManager } from "../audio/AudioManager";
 import { updateSave } from "../data/save";
 import { addAudioControls } from "../ui/AudioControls";
 import { presentDialogueOverlay } from "../ui/DialogueOverlay";
+import { addSceneBackground } from "../ui/sceneArt";
 import type { DialogueLine } from "../systems/dialogue/DialogueRunner";
 
 const INTRO_LINES: DialogueLine[] = [
@@ -44,11 +45,7 @@ export class IntroScene extends Phaser.Scene {
     const { width, height } = this.scale;
     void this.audio.unlock().then(() => this.audio.playTrack("world"));
 
-    if (this.textures.exists("splash-bg")) {
-      this.add.image(width / 2, height / 2, "splash-bg").setDisplaySize(width, height);
-    } else if (this.textures.exists("env-village")) {
-      this.add.image(width / 2, height / 2, "env-village").setDisplaySize(width, height);
-    } else {
+    if (!addSceneBackground(this, "splash-bg") && !addSceneBackground(this, "env-village")) {
       this.add.rectangle(width / 2, height / 2, width, height, 0x14101a);
     }
 

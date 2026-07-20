@@ -5,6 +5,7 @@ import { loadSave } from "../data/save";
 import { addAudioControls } from "../ui/AudioControls";
 import { GAME_VERSION } from "../config/version";
 import { pickLayoutProfile } from "../ui/layoutProfile";
+import { addSceneBackground } from "../ui/sceneArt";
 
 export class MenuScene extends Phaser.Scene {
   constructor() {
@@ -17,9 +18,7 @@ export class MenuScene extends Phaser.Scene {
     const { width, height } = this.scale;
     const mobile = pickLayoutProfile(width, height) === "mobile";
 
-    if (this.textures.exists("splash-bg")) {
-      this.add.image(width / 2, height / 2, "splash-bg").setDisplaySize(width, height);
-    } else {
+    if (!addSceneBackground(this, "splash-bg")) {
       this.add.rectangle(width / 2, height / 2, width, height, 0x14101a);
     }
 

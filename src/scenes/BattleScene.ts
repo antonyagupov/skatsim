@@ -28,6 +28,7 @@ import {
   type BattleLayoutConfig,
   type LayoutProfile,
 } from "../ui/layoutProfile";
+import { addSceneBackground } from "../ui/sceneArt";
 import { elementColor, elementForGem } from "../systems/combat/elements";
 import { potionHealFraction } from "../systems/combat/progression";
 import {
@@ -43,6 +44,7 @@ import {
 } from "../systems/tutorial/TutorialManager";
 import { addAudioControls } from "../ui/AudioControls";
 import { createRng, randomSeed } from "../systems/rng";
+import { GAME_VERSION } from "../config/version";
 
 type GemSprite = Phaser.GameObjects.Image & {
   boardR: number;
@@ -135,8 +137,8 @@ export class BattleScene extends Phaser.Scene {
 
   create(): void {
     this.busy = false;
-    this.selected = null;
-    this.dragStart = null;
+    this.potionMode = false;
+    this.clearGemSelection();
     this.tweens.killAll();
     this.time.removeAllEvents();
 
@@ -211,6 +213,8 @@ export class BattleScene extends Phaser.Scene {
 
   private onShutdown(): void {
     this.busy = false;
+    this.potionMode = false;
+    this.clearGemSelection();
     this.tweens.killAll();
     this.time.removeAllEvents();
     if (this.listenersBound) {
@@ -221,15 +225,22 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private drawBattlefield(width: number): void {
-    const bgKey =
-      this.encounterId === "fortress" && this.textures.exists("battle-boss-bg")
+    const baseKey =
+      this.encounterId === "fortress" &&
+      (this.textures.exists("battle-boss-bg") ||
+        this.textures.exists("battle-boss-bg-mobile"))
         ? "battle-boss-bg"
         : "battle-screen-ref";
-    if (this.textures.exists(bgKey)) {
-      this.add
-        .image(width / 2, this.fieldH / 2, bgKey)
-        .setDisplaySize(width, this.fieldH);
-    } else {
+    if (
+      !addSceneBackground(this, baseKey, {
+        profile: this.layoutProfile,
+        x: width / 2,
+        y: this.fieldH / 2,
+        width,
+        height: this.fieldH,
+        coverAnchorY: 0.35,
+      })
+    ) {
       this.add.rectangle(
         width / 2,
         this.fieldH / 2,
@@ -271,8 +282,8 @@ export class BattleScene extends Phaser.Scene {
     this.battle.enemies.forEach((e, i) => this.spawnEnemyVisual(e, enemyX, i));
 
     this.targetMarker = this.add
-      .ellipse(0, 0, 88, 26, 0xf0c050, 0.15)
-      .setStrokeStyle(2, 0xf0c050)
+      .ellipse(0, 0, 96, 28, 0xf0c050, 0.35)
+      .setStrokeStyle(3, 0xffe080, 1)
       .setVisible(false);
   }
 
@@ -296,8 +307,8 @@ export class BattleScene extends Phaser.Scene {
     });
 
     this.targetMarker = this.add
-      .ellipse(0, 0, 72, 20, 0xf0c050, 0.15)
-      .setStrokeStyle(2, 0xf0c050)
+      .ellipse(0, 0, 80, 24, 0xf0c050, 0.4)
+      .setStrokeStyle(3, 0xffe080, 1)
       .setVisible(false);
   }
 
@@ -436,6 +447,8 @@ export class BattleScene extends Phaser.Scene {
 
     spr.on("pointerdown", () => {
       if (this.busy || !this.battle.acceptsInput) return;
+      const live = this.battle.enemies.find((e) => e.id === enemy.id && e.alive);
+      if (!live) return;
       this.battle.selectEnemy(enemy.id);
       this.audio.sfx("ui_click");
       this.syncTargetMarker();
@@ -519,34 +532,39 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private layoutChrome(width: number, _save: ReturnType<typeof loadSave>): void {
-    const y = this.scale.height - this.layout.chromeBottom + 8;
-    const padX = this.layoutProfile === "mobile" ? 10 : 8;
-    const padY = this.layoutProfile === "mobile" ? 8 : 5;
+    const mobile = this.layoutProfile === "mobile";
+    const padX = mobile ? 12 : 8;
+    const padY = mobile ? 10 : 5;
     const btnStyle = {
       fontFamily: "monospace",
-      fontSize: this.layoutProfile === "mobile" ? "15px" : "14px",
+      fontSize: mobile ? "16px" : "14px",
       color: "#f2e9d8",
       backgroundColor: "#2a2238",
       padding: { x: padX, y: padY },
     };
 
+    // Thumb row near bottom: Potion + Map. Audio sits above on mobile.
+    const thumbY = this.scale.height - (mobile ? 28 : this.layout.chromeBottom - 8);
     addAudioControls(this, {
       bottomInset: this.layout.chromeBottom,
-      large: this.layoutProfile === "mobile",
+      large: mobile,
+      yOffset: mobile ? 36 : 0,
     });
 
     if (this.battle.potionAvailable) {
-      const potionX = this.layoutProfile === "mobile" ? 118 : 130;
+      const potionX = mobile ? 16 : 130;
       this.potionBtn = this.add
-        .text(potionX, y, "Potion", {
+        .text(potionX, thumbY, "Potion", {
           ...btnStyle,
           color: "#1a1008",
           backgroundColor: "#6a9c5a",
         })
         .setOrigin(0, 0.5)
+        .setDepth(1000)
         .setInteractive({ useHandCursor: true });
       this.potionBtn.on("pointerdown", () => {
         if (this.busy || !this.battle.potionAvailable) return;
+        this.clearGemSelection();
         this.potionMode = !this.potionMode;
         this.potionBtn?.setBackgroundColor(this.potionMode ? "#f0c050" : "#6a9c5a");
         this.audio.sfx("ui_click");
@@ -554,21 +572,33 @@ export class BattleScene extends Phaser.Scene {
     }
 
     this.add
-      .text(width - 12, y, "Map", {
+      .text(width - 12, thumbY, "Map", {
         fontFamily: "monospace",
-        fontSize: this.layoutProfile === "mobile" ? "15px" : "13px",
+        fontSize: mobile ? "16px" : "13px",
         color: "#1a1008",
         backgroundColor: "#c8b090",
         padding: { x: padX + 2, y: padY },
       })
       .setOrigin(1, 0.5)
+      .setDepth(1000)
       .setInteractive({ useHandCursor: true })
       .on("pointerdown", () => {
         this.busy = false;
+        this.clearGemSelection();
+        this.potionMode = false;
         this.audio.sfx("ui_click");
         this.audio.playTrack("world");
         this.scene.start("World");
       });
+
+    this.add
+      .text(width - 12, mobile ? 10 : 8, `v${GAME_VERSION}`, {
+        fontFamily: "monospace",
+        fontSize: "10px",
+        color: "#6a5e52",
+      })
+      .setOrigin(1, 0)
+      .setDepth(1000);
 
     this.cascadeText = this.add
       .text(width / 2, this.boardOrigin.y - 10, "", {
@@ -602,12 +632,12 @@ export class BattleScene extends Phaser.Scene {
       .setVisible(false);
 
     this.stateText = this.add
-      .text(width - 12, 10, "", {
+      .text(12, 10, "", {
         fontFamily: "monospace",
         fontSize: "11px",
         color: "#88aa88",
       })
-      .setOrigin(1, 0)
+      .setOrigin(0, 0)
       .setVisible(false);
   }
 
@@ -624,6 +654,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private async tryUsePotion(heroId: HeroId): Promise<void> {
+    this.clearGemSelection();
     const res = this.battle.usePotion(heroId);
     if (!res.ok) return;
     this.potionMode = false;
@@ -658,6 +689,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private rebuildGemSprites(): void {
+    this.clearGemSelection();
     for (const row of this.gemSprites) {
       for (const g of row) {
         g?.prismaticOverlay?.destroy();
@@ -856,6 +888,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private refreshEnemies(): void {
+    const selectedId = this.battle.selectedEnemyId;
     for (const enemy of this.battle.enemies) {
       const spr = this.enemySprites.get(enemy.id);
       const g = this.enemyBars.get(enemy.id);
@@ -868,12 +901,31 @@ export class BattleScene extends Phaser.Scene {
       g.clear();
       if (!enemy.alive) {
         spr.setAlpha(0.22);
+        spr.clearTint();
+        if (spr.input?.enabled) spr.disableInteractive();
         badge?.setVisible(false);
         telegraph?.setVisible(false);
         status?.setVisible(false);
         continue;
       }
+      if (!spr.input?.enabled) {
+        spr.setInteractive({
+          useHandCursor: true,
+          hitArea: new Phaser.Geom.Rectangle(
+            -home.w * 0.15,
+            -home.h * 0.15,
+            home.w * 1.3,
+            home.h * 1.3,
+          ),
+          hitAreaCallback: Phaser.Geom.Rectangle.Contains,
+        });
+      }
       spr.setAlpha(1);
+      if (enemy.id === selectedId) {
+        spr.setTint(0xffe8a0);
+      } else {
+        spr.clearTint();
+      }
       const cd = Math.max(0, enemy.countdown);
       const urgent = cd <= 1;
       badge
@@ -903,11 +955,16 @@ export class BattleScene extends Phaser.Scene {
         g.fillRect(x, y + 7, w * (enemy.armor / enemy.maxArmor), 3);
       }
     }
+    this.syncTargetMarker();
   }
 
   private syncTargetMarker(): void {
+    if (!this.targetMarker) return;
     const id = this.battle.selectedEnemyId;
-    if (!id) {
+    const enemy = id
+      ? this.battle.enemies.find((e) => e.id === id && e.alive)
+      : undefined;
+    if (!id || !enemy) {
       this.targetMarker.setVisible(false);
       return;
     }
@@ -916,7 +973,12 @@ export class BattleScene extends Phaser.Scene {
       this.targetMarker.setVisible(false);
       return;
     }
-    this.targetMarker.setPosition(home.x, home.y + 38).setVisible(true);
+    const footY = home.y + home.h * 0.48;
+    this.targetMarker
+      .setPosition(home.x, footY)
+      .setDisplaySize(home.w * 1.05, Math.max(18, home.h * 0.28))
+      .setVisible(true)
+      .setDepth(50);
   }
 
   private onPointerDown = (pointer: Phaser.Input.Pointer): void => {
@@ -948,6 +1010,14 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
     const a = this.selected;
+    // Stale selection from a previous board rebuild / battle — treat as fresh select.
+    if (!this.gemSprites[a.r]?.[a.c]) {
+      this.clearGemSelection();
+      this.selected = end;
+      this.setGemSelected(end.r, end.c, true);
+      this.dragStart = null;
+      return;
+    }
     this.setGemSelected(a.r, a.c, false);
     if (a.r === end.r && a.c === end.c) {
       this.selected = null;
@@ -959,7 +1029,12 @@ export class BattleScene extends Phaser.Scene {
   };
 
   private clearGemSelection(): void {
-    if (this.selected) this.setGemSelected(this.selected.r, this.selected.c, false);
+    if (this.selected) {
+      const { r, c } = this.selected;
+      if (this.gemSprites[r]?.[c] || this.cellHighlights[r]?.[c]) {
+        this.setGemSelected(r, c, false);
+      }
+    }
     this.selected = null;
     this.dragStart = null;
     this.setPressedCell(null);
@@ -1133,6 +1208,7 @@ export class BattleScene extends Phaser.Scene {
 
   private async runAbility(heroId: HeroId): Promise<void> {
     if (this.busy || !this.battle.acceptsInput) return;
+    this.clearGemSelection();
     this.busy = true;
     try {
       this.audio.sfx("ability_use");
@@ -1234,6 +1310,7 @@ export class BattleScene extends Phaser.Scene {
     for (const tid of ev.targetIds) {
       const target = this.enemySprites.get(tid);
       const th = this.enemyHome.get(tid);
+      // Still play VFX for the killing blow (enemy may already be !alive after resolve).
       if (!target || !th) continue;
 
       if (ev.kind === "hero_match_attack") {

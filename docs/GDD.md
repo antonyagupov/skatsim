@@ -71,14 +71,15 @@ Boot → Preload (load bar)
 
 ### 5.1 Layout (implemented)
 
-- **Stage:** Side-view arena, internal resolution **960×720**, pixel art, FIT scale, canvas centered by Phaser.
-- **Upper ~52% (`fieldFraction`):** Battlefield (normal arena or fortress boss backdrop).
-- **Left / party:** Large **portrait cards** with HP / charge / shield bars; ability glow when ready. Cards are the interactive party (potion / ability). Attack lunges and projectiles use the portrait as home.
-- **Right / foes:** Enemies face left; HP, armor bar, element tint, countdown badges, target marker.
-- **Center:** Projectiles, VFX, damage / affinity float text.
-- **Lower:** 7×7 board (`maxGemCell` = 50).
+- **Desktop:** Side-view arena, internal resolution **960×720**, pixel art, FIT scale, canvas centered by Phaser. Party left / enemies right.
+- **Mobile (portrait):** Canvas **420×760**, vertical stack — enemies in a short top field band, party cards under the field, gem board below. See `src/ui/layoutProfile.ts`.
+- **Art:** Full-bleed scenes use landscape keys on desktop and `*-mobile` portrait variants on mobile (`resolveSceneTexture` / `addSceneBackground` in `src/ui/sceneArt.ts`). Missing mobile art falls back to cover-crop of the landscape texture.
+- **Upper field (`fieldFraction`):** ~52% desktop / ~28% mobile. Normal arena or fortress boss backdrop.
+- **Party:** Portrait cards with HP / charge / shield bars; ability glow when ready. Mobile uses compact cards with bars under the portrait.
+- **Foes:** Desktop right-side staging; mobile centered in the top field band.
+- **Lower:** 7×7 board (`maxGemCell` 50 desktop / 54 mobile; mobile cell floored at 36px).
 
-Layout constants: `partyX≈0.02`, `enemyX≈0.82`, `partyPortraitSize=78`, `partyCardW=152`, `partyCardH=92` (`src/data/mapNodes.ts` → `BATTLE_LAYOUT`).
+Desktop constants: `partyX≈0.02`, `enemyX≈0.82`, `partyPortraitSize=78` (`DESKTOP_BATTLE_LAYOUT`). Mobile: `partyPortraitSize=48`, `enemyScale=0.92` (`MOBILE_BATTLE_LAYOUT`).
 
 ### 5.2 Turn structure
 

@@ -58,14 +58,16 @@ export const MOBILE_BATTLE_LAYOUT: BattleLayoutConfig = {
   enemySide: "top",
   partyX: 0.02,
   enemyX: 0.5,
-  fieldFraction: 0.28,
+  /** ~240px field so 420×240 battle art cover-fits without squash. */
+  fieldFraction: 0.315,
   maxGemCell: 54,
   partyPortraitSize: 48,
   partyCardW: 92,
   partyCardH: 86,
   partyTop: 8,
   partyGap: 6,
-  chromeBottom: 36,
+  /** Room for audio row + Potion/Map thumb row. */
+  chromeBottom: 72,
   boardSidePad: 16,
   partyBarsBelow: true,
   enemyScale: 0.92,

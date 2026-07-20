@@ -13,6 +13,8 @@ type Options = {
   bottomInset?: number;
   /** Larger tap targets (mobile). */
   large?: boolean;
+  /** Extra upward shift from the bottomInset baseline (battle chrome rows). */
+  yOffset?: number;
 };
 
 /**
@@ -40,7 +42,7 @@ export function addAudioControls(
 
   const musicX = 12;
   const sfxX = large ? 72 : 60;
-  const y = height - bottomInset + 8;
+  const y = height - bottomInset + 8 - (opts.yOffset ?? 0);
 
   const musicBtn = scene.add
     .text(musicX, y, save.musicMuted ? "♪ off" : "♪", style)

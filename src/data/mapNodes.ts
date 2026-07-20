@@ -10,6 +10,9 @@ export type MapNodeDef = {
   kind: MapNodeKind;
   x: number;
   y: number;
+  /** Portrait map fractions (vertical path). Falls back to x/y when omitted. */
+  xMobile?: number;
+  yMobile?: number;
   sceneKey?: "Battle" | "Village" | "Ending";
   encounterId?: string;
   requires?: Array<keyof SaveData>;
@@ -31,6 +34,8 @@ export const MAP_NODES: MapNodeDef[] = [
     kind: "village",
     x: 0.18,
     y: 0.48,
+    xMobile: 0.5,
+    yMobile: 0.16,
     sceneKey: "Village",
     alwaysUnlocked: true,
     color: 0xc8a060,
@@ -41,6 +46,8 @@ export const MAP_NODES: MapNodeDef[] = [
     kind: "battle",
     x: 0.34,
     y: 0.62,
+    xMobile: 0.42,
+    yMobile: 0.24,
     sceneKey: "Battle",
     encounterId: "ruins",
     alwaysUnlocked: true,
@@ -55,6 +62,8 @@ export const MAP_NODES: MapNodeDef[] = [
     kind: "battle",
     x: 0.48,
     y: 0.42,
+    xMobile: 0.58,
+    yMobile: 0.36,
     sceneKey: "Battle",
     encounterId: "forest",
     requires: ["firstNodeCompleted"],
@@ -69,6 +78,8 @@ export const MAP_NODES: MapNodeDef[] = [
     kind: "battle",
     x: 0.62,
     y: 0.58,
+    xMobile: 0.4,
+    yMobile: 0.48,
     sceneKey: "Battle",
     encounterId: "quarry",
     requires: ["forestNodeCompleted"],
@@ -83,6 +94,8 @@ export const MAP_NODES: MapNodeDef[] = [
     kind: "battle",
     x: 0.74,
     y: 0.38,
+    xMobile: 0.6,
+    yMobile: 0.6,
     sceneKey: "Battle",
     encounterId: "cave",
     requires: ["quarryNodeCompleted"],
@@ -97,6 +110,8 @@ export const MAP_NODES: MapNodeDef[] = [
     kind: "battle",
     x: 0.86,
     y: 0.55,
+    xMobile: 0.72,
+    yMobile: 0.74,
     sceneKey: "Battle",
     encounterId: "fortress",
     requires: ["caveNodeCompleted"],
@@ -112,6 +127,8 @@ export const MAP_NODES: MapNodeDef[] = [
     kind: "battle",
     x: 0.28,
     y: 0.28,
+    xMobile: 0.22,
+    yMobile: 0.28,
     sceneKey: "Battle",
     encounterId: "marsh",
     requires: ["chapter2Unlocked"],
@@ -126,6 +143,8 @@ export const MAP_NODES: MapNodeDef[] = [
     kind: "battle",
     x: 0.44,
     y: 0.22,
+    xMobile: 0.2,
+    yMobile: 0.42,
     sceneKey: "Battle",
     encounterId: "bridge",
     requires: ["marshNodeCompleted"],
@@ -140,6 +159,8 @@ export const MAP_NODES: MapNodeDef[] = [
     kind: "battle",
     x: 0.6,
     y: 0.18,
+    xMobile: 0.28,
+    yMobile: 0.55,
     sceneKey: "Battle",
     encounterId: "watchtower",
     requires: ["bridgeNodeCompleted"],
@@ -155,6 +176,8 @@ export const MAP_NODES: MapNodeDef[] = [
     kind: "ending",
     x: 0.76,
     y: 0.14,
+    xMobile: 0.78,
+    yMobile: 0.82,
     sceneKey: "Ending",
     requires: ["watchtowerNodeCompleted"],
     color: 0x4060a0,
@@ -164,6 +187,18 @@ export const MAP_NODES: MapNodeDef[] = [
   },
 ];
 
+export function nodeMapPos(
+  node: MapNodeDef,
+  mobile: boolean,
+): { x: number; y: number } {
+  if (mobile) {
+    return {
+      x: node.xMobile ?? node.x,
+      y: node.yMobile ?? node.y,
+    };
+  }
+  return { x: node.x, y: node.y };
+}
 export const MAP_EDGES: Array<[string, string]> = [
   ["village", "ruins-path"],
   ["ruins-path", "forest-trail"],
@@ -192,6 +227,6 @@ export function nodeRewardPreview(node: MapNodeDef) {
   return rewardPreview(node.encounterId);
 }
 
-/** Layout constants for battle composition — party LEFT, enemies RIGHT (desktop). */
+/** Layout constants for battle composition — re-exported from layoutProfile. */
 export { DESKTOP_BATTLE_LAYOUT as BATTLE_LAYOUT } from "../ui/layoutProfile";
 export type { BattleLayoutConfig } from "../ui/layoutProfile";
