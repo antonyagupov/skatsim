@@ -43,6 +43,14 @@
     "source": "generated",
     "path": "/assets/enemies/boss-goblin.png"
   },
+  "env-hollow-keep": {
+    "source": "generated",
+    "path": "/assets/env/env-hollow-keep.png"
+  },
+  "ending-party": {
+    "source": "generated",
+    "path": "/assets/splash/ending-party.png"
+  },
   "gems-set": {
     "source": "generated",
     "path": "/assets/gems/gems-set.png"
@@ -58,6 +66,62 @@
   "battle-boss-bg": {
     "source": "generated",
     "path": "/assets/env/battle-boss-bg.png"
+  },
+  "icon-gold": {
+    "source": "generated",
+    "path": "/assets/ui/icon-gold.png"
+  },
+  "icon-materials": {
+    "source": "generated",
+    "path": "/assets/ui/icon-materials.png"
+  },
+  "facility-mine": {
+    "source": "generated",
+    "path": "/assets/ui/facility-mine.png"
+  },
+  "facility-training": {
+    "source": "generated",
+    "path": "/assets/ui/facility-training.png"
+  },
+  "facility-workshop": {
+    "source": "generated",
+    "path": "/assets/ui/facility-workshop.png"
+  },
+  "icon-warriors": {
+    "source": "generated",
+    "path": "/assets/ui/icon-warriors.png"
+  },
+  "splash-bg-mobile": {
+    "source": "generated",
+    "path": "/assets/splash/splash-bg-mobile.png"
+  },
+  "splash-match3-mobile": {
+    "source": "generated",
+    "path": "/assets/splash/splash-match3-mobile.png"
+  },
+  "env-worldmap-mobile": {
+    "source": "generated",
+    "path": "/assets/env/env-worldmap-mobile.png"
+  },
+  "env-village-mobile": {
+    "source": "generated",
+    "path": "/assets/env/env-village-mobile.png"
+  },
+  "env-hollow-keep-mobile": {
+    "source": "generated",
+    "path": "/assets/env/env-hollow-keep-mobile.png"
+  },
+  "ending-party-mobile": {
+    "source": "generated",
+    "path": "/assets/splash/ending-party-mobile.png"
+  },
+  "battle-screen-ref-mobile": {
+    "source": "generated",
+    "path": "/assets/refs/battle-screen-ref-mobile.png"
+  },
+  "battle-boss-bg-mobile": {
+    "source": "generated",
+    "path": "/assets/env/battle-boss-bg-mobile.png"
   },
   "gem-flame": {
     "source": "generated",
@@ -90,37 +154,5 @@
   "hero-priest-portrait": {
     "source": "generated",
     "path": "/assets/portraits/hero-priest-portrait.png"
-  },
-  "icon-gold": {
-    "source": "generated",
-    "path": "/assets/ui/icon-gold.png"
-  },
-  "icon-materials": {
-    "source": "generated",
-    "path": "/assets/ui/icon-materials.png"
-  },
-  "facility-mine": {
-    "source": "generated",
-    "path": "/assets/ui/facility-mine.png"
-  },
-  "facility-training": {
-    "source": "generated",
-    "path": "/assets/ui/facility-training.png"
-  },
-  "facility-workshop": {
-    "source": "generated",
-    "path": "/assets/ui/facility-workshop.png"
-  },
-  "icon-warriors": {
-    "source": "generated",
-    "path": "/assets/ui/icon-warriors.png"
-  },
-  "env-hollow-keep": {
-    "source": "generated",
-    "path": "/assets/env/env-hollow-keep.png"
-  },
-  "ending-party": {
-    "source": "generated",
-    "path": "/assets/splash/ending-party.png"
   }
 }
